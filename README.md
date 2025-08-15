@@ -76,7 +76,6 @@ IMAGE_SIZE=1024x1024
 
 ## 📚 Student Tasks
 
-### Beginner Level
 1. **Modify the prompt templates** in `app.py`:
    - Improve `make_bible_prompt()` for better story structure
    - Enhance `make_page_text_prompt()` for better writing
@@ -87,7 +86,6 @@ IMAGE_SIZE=1024x1024
    - Target age group
    - Story length preferences
 
-### Intermediate Level
 3. **Implement agentic loops**:
    - Story revision based on feedback
    - Character consistency checks
@@ -99,13 +97,6 @@ IMAGE_SIZE=1024x1024
    - Character customization
    - Plot twist generation
    - Alternative endings
-
-### Advanced Level
-5. **Build advanced workflows**:
-   - Multi-agent collaboration (separate agents for different roles)
-   - Iterative story improvement
-   - A/B testing different prompts
-   - Performance optimization
 
 ## 🎨 Example Story Ideas
 
