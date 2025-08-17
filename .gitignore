@@ -1,16 +1,46 @@
-# Local environment files
+# --- Local environment ---
 .env
 .env.local
 .env.*.local
+.env.*        # 覆盖 .env.backup / .env.dev / .env.staging 等
+!.env.example
+.streamlit/secrets.toml
 
-# IDE/Editor files
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.mypy_cache/
+.pytest_cache/
+.cache/
+pip-wheel-metadata/
+
+# --- Virtual env ---
+.venv/
+venv/
+
+# --- Project artifacts (generated) ---
+outputs/
+*.pdf
+*.zip
+hf_probe.png
+
+# --- Screenshots: keep README, ignore others ---
+/screenshots/*
+!/screenshots/README.md
+
+# --- IDE/Editor ---
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS generated files
+# --- OS files ---
 .DS_Store
 .DS_Store?
 ._*
@@ -19,33 +49,25 @@
 ehthumbs.db
 Thumbs.db
 
-# Logs
+# --- Logs ---
 *.log
 logs/
 
-# Dependencies
+# --- (Optional) Node / vendor ---
 node_modules/
 vendor/
 
-# Build outputs
+# --- Build outputs (if any) ---
 dist/
 build/
 *.min.js
 *.min.css
 
-# Temporary files
+# --- Temp ---
 tmp/
 temp/
 *.tmp
 
-# Personal notes or configs
+# --- Personal notes ---
 notes.txt
 config.local.json
-
-# venv
-venv/
-
-# pyc
-*.pyc
-
-screenshots/README.md 

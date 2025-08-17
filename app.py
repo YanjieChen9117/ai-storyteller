@@ -26,6 +26,10 @@ from utils import (
     save_bytes,
     StoryBible,
     IMAGE_SIZE,
+    llm_json,
+    ensure_bible,
+    ensure_image,
+    ensure_page_text,
 )
 
 # ---------- Helpers ----------
@@ -65,32 +69,26 @@ def export_zip(base_dir: Path) -> Path:
 
 # ---------- Prompt templates (STUDENTS: Improve these!) ----------
 def make_bible_prompt(idea: str, pages: int, schema: dict) -> str:
-    """
-    STUDENT TASK: Improve this prompt to create better story bibles!
-    Consider adding:
-    - Genre-specific guidance
-    - Character development rules
-    - Plot structure templates
-    - Age-appropriate content guidelines
-    """
-    return f"""
-You are the Architect. Turn IDEA + TARGET_PAGES into a Story Bible JSON.
+    """Generate a prompt for creating a Story Bible."""
+    return f"""You are The Architect - a master storyteller who creates structured story plans.
 
-Rules:
-- Output ONLY JSON (no backticks, no prose).
-- The JSON must match the schema (fields and types).
-- Include plot_beats with exactly TARGET_PAGES items, pages numbered 1..N.
-- Each beat must have summary and image_prompt.
-- Keep character visual_anchors consistent across all pages.
-- Create a cohesive story arc with beginning, middle, and end.
-- Ensure each page advances the plot meaningfully.
+Create a Story Bible for: "{idea}"
+Target length: {pages} pages
 
-IDEA: {idea}
-TARGET_PAGES: {pages}
+REQUIREMENTS:
+1. Output ONLY valid JSON - no markdown, no explanations, no extra text
+2. Must exactly match this schema: {json.dumps(schema, ensure_ascii=False)}
+3. plot_beats array MUST contain exactly {pages} items
+4. Each plot_beat must have: {{ "page": n, "summary": "...(<=20 words)", "image_prompt": "...(<=30 words)" }}
+5. Include art_style with: style_tags (array), palette (array), composition_rules (string)
 
-SCHEMA:
-{json.dumps(schema)}
-""".strip()
+Focus on:
+- Clear character development
+- Logical plot progression
+- Visual consistency
+- Age-appropriate themes
+
+Return ONLY the JSON object:"""
 
 def make_page_text_prompt(bible: dict, beat: dict) -> str:
     """
@@ -177,10 +175,38 @@ if run_button:
         # 1) Architect → Bible
         with st.spinner("🎭 Creating Story Bible..."):
             schema = StoryBible.model_json_schema()
-            prompt = make_bible_prompt(idea, int(pages), schema)
-            raw = llm_text(prompt, response_format={"type": "json_object"}, temperature=0.4)
-            data = json.loads(raw)
-            bible = StoryBible(**data)  # validates structure
+            try:
+                bible, data = ensure_bible(idea, int(pages), schema, max_attempts=3, temperature=0.4)
+            except Exception as json_error:
+                error_msg = str(json_error)
+                
+                # Handle RetryError by extracting underlying exception
+                if "RetryError" in error_msg:
+                    try:
+                        # Try to extract the underlying exception
+                        import re
+                        match = re.search(r"Exception: (.+?)(?:\n|$)", error_msg)
+                        if match:
+                            error_msg = match.group(1)
+                    except:
+                        pass  # Keep original error if extraction fails
+                
+                if "authentication failed" in error_msg.lower():
+                    st.error(f"❌ API Authentication Error: {error_msg}")
+                    st.info("💡 Please check your GEMINI_API_KEY in the .env file. Make sure it's valid and not expired.")
+                elif "quota exceeded" in error_msg.lower():
+                    st.error(f"❌ API Quota Error: {error_msg}")
+                    st.info("💡 You've reached your Gemini API usage limit. Please try again later or check your billing.")
+                elif "network connection" in error_msg.lower():
+                    st.error(f"❌ Network Error: {error_msg}")
+                    st.info("💡 Please check your internet connection and try again.")
+                elif "invalid json format" in error_msg.lower() or "json" in error_msg.lower():
+                    st.error(f"❌ JSON Format Error: {error_msg}")
+                    st.info("💡 The AI generated malformed JSON. Try again or simplify your story idea.")
+                else:
+                    st.error(f"❌ Unexpected Error: {error_msg}")
+                    st.info("💡 An unexpected error occurred. Please try again or contact support if the problem persists.")
+                st.stop()
 
         # Save folder
         folder_slug = slugify(project_name or bible.meta.get("title") or idea)
@@ -204,14 +230,45 @@ if run_button:
                 progress_bar.progress((i + 1) / len(bible.plot_beats[:int(pages)]))
                 
                 beat_dict = beat.model_dump()
-                # Author draft
-                page_text = llm_text(make_page_text_prompt(data, beat_dict), temperature=0.7)
+                # Author draft (with validation and retry)
+                try:
+                    page_text, text_metrics = ensure_page_text(
+                        data, beat_dict, max_attempts=2, strict=True, temperature=0.7
+                    )
+                    
+                    # Log text metrics for debugging
+                    print(f"Page {beat.page}: Text generated successfully")
+                    print(f"  Sentences: {text_metrics.get('sentence_count', 'N/A')}")
+                    print(f"  Words: {text_metrics.get('word_count', 'N/A')}")
+                    print(f"  Avg words/sentence: {text_metrics.get('avg_words_per_sentence', 'N/A')}")
+                    print(f"  Has main character: {text_metrics.get('has_main_character', 'N/A')}")
+                    
+                except Exception as text_error:
+                    print(f"Text generation failed for page {beat.page}: {str(text_error)}")
+                    # Fallback to simple text generation
+                    page_text = llm_text(make_page_text_prompt(data, beat_dict), temperature=0.7)
 
-                # Designer prompt + image
-                final_image_prompt = make_image_prompt(data, beat_dict)
-                img_bytes = gen_image_b64(final_image_prompt, size=image_size)
-                img_path = base_dir / "images" / f"page_{beat.page:02d}.png"
-                save_bytes(img_path, img_bytes)
+                # Designer prompt + image (with validation and retry)
+                try:
+                    img_bytes, final_image_prompt, img_metrics = ensure_image(
+                        data, beat_dict, image_size, max_attempts=2, strict=True
+                    )
+                    img_path = base_dir / "images" / f"page_{beat.page:02d}.png"
+                    save_bytes(img_path, img_bytes)
+                    
+                    # Log image metrics for debugging
+                    print(f"Page {beat.page}: Image generated successfully")
+                    print(f"  Size: {img_metrics.get('width', 'N/A')}x{img_metrics.get('height', 'N/A')}")
+                    print(f"  Colors: {img_metrics.get('unique_colors', 'N/A')}")
+                    print(f"  Entropy: {img_metrics.get('entropy', 'N/A')}")
+                    
+                except Exception as img_error:
+                    print(f"Image generation failed for page {beat.page}: {str(img_error)}")
+                    # Fallback to simple image generation
+                    final_image_prompt = make_image_prompt(data, beat_dict)
+                    img_bytes = gen_image_b64(final_image_prompt, size=image_size)
+                    img_path = base_dir / "images" / f"page_{beat.page:02d}.png"
+                    save_bytes(img_path, img_bytes)
 
                 page_record = {
                     "page": beat.page,

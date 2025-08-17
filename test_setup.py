@@ -1,100 +1,79 @@
 #!/usr/bin/env python3
 """
-Test script to verify your AI Storyteller setup is working correctly.
-Run this before starting the main app to check your configuration.
-
-Usage: python test_setup.py
+Test script for AI Storyteller setup
 """
-
 import os
 import sys
+import traceback
 from pathlib import Path
-from dotenv import load_dotenv
 
 def test_environment():
     """Test if environment variables are set correctly."""
     print("🔍 Testing environment setup...")
     
-    # Load .env file
-    load_dotenv()
-    
-    # Check API key
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        print("❌ OPENAI_API_KEY not found in environment")
-        print("   Please create a .env file with your API key")
+    # Check for Gemini API key
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key or gemini_key == "your_gemini_api_key_here":
+        print("❌ GEMINI_API_KEY not found or invalid")
         return False
-    elif api_key == "sk-your-api-key-here":
-        print("❌ Please replace the placeholder API key with your actual key")
-        return False
-    else:
-        print("✅ OPENAI_API_KEY found")
     
-    # Check model settings
-    model_text = os.getenv("MODEL_TEXT", "gpt-4o-mini")
-    model_image = os.getenv("MODEL_IMAGE", "dall-e-3")
-    image_size = os.getenv("IMAGE_SIZE", "1024x1024")
+    print("✅ GEMINI_API_KEY found")
     
-    print(f"✅ MODEL_TEXT: {model_text}")
-    print(f"✅ MODEL_IMAGE: {model_image}")
-    print(f"✅ IMAGE_SIZE: {image_size}")
+    # Models are now hardcoded in utils.py
+    print("✅ MODEL_TEXT: gemini-2.5-flash-lite")
+    print("✅ MODEL_IMAGE: gemini-2.0-flash-exp")
+    print("✅ IMAGE_SIZE: 1024x1024")
     
     return True
 
 def test_dependencies():
-    """Test if all required packages are installed."""
+    """Test if required packages are installed."""
     print("\n📦 Testing dependencies...")
     
-    required_packages = [
-        "streamlit",
-        "openai", 
-        "pydantic",
-        "python-dotenv",
-        "Pillow",
-        "fpdf2",
-        "tenacity"
-    ]
+    required_packages = {
+        "streamlit": "streamlit",
+        "google-genai": "google.genai",
+        "pydantic": "pydantic",
+        "python-dotenv": "dotenv",
+        "Pillow": "PIL",
+        "fpdf2": "fpdf",
+    }
     
-    missing_packages = []
-    
-    for package in required_packages:
+    all_good = True
+    for package_name, import_name in required_packages.items():
         try:
-            __import__(package.replace("-", "_"))
-            print(f"✅ {package}")
+            __import__(import_name)
+            print(f"✅ {package_name}")
         except ImportError:
-            print(f"❌ {package} - not installed")
-            missing_packages.append(package)
+            print(f"❌ {package_name} not found")
+            all_good = False
     
-    if missing_packages:
-        print(f"\n⚠️  Missing packages: {', '.join(missing_packages)}")
-        print("   Run: pip install -r requirements.txt")
-        return False
-    
-    return True
+    return all_good
 
 def test_api_connection():
-    """Test if we can connect to OpenAI API."""
+    """Test if we can connect to Gemini API."""
     print("\n🌐 Testing API connection...")
     
     try:
-        from openai import OpenAI
+        from google import genai
         from utils import llm_text
         
-        # Simple test call
-        response = llm_text("Say 'Hello, AI Storyteller!'", temperature=0.1)
+        # Test Gemini connection
+        response = llm_text("Say 'Hello from Gemini!'", temperature=0.1)
         
-        if "hello" in response.lower() or "ai storyteller" in response.lower():
-            print("✅ API connection successful")
+        if "hello" in response.lower() or "gemini" in response.lower():
+            print("✅ Gemini API connection successful")
             print(f"   Response: {response}")
             return True
         else:
-            print("⚠️  API responded but with unexpected content")
+            print("⚠️  Gemini API responded but with unexpected content")
             print(f"   Response: {response}")
             return True
             
     except Exception as e:
-        print(f"❌ API connection failed: {str(e)}")
-        print("   Check your API key and internet connection")
+        print(f"❌ Gemini API connection failed: {str(e)}")
+        print("   Full traceback:")
+        traceback.print_exc()
         return False
 
 def main():
@@ -102,16 +81,18 @@ def main():
     print("🚀 AI Storyteller Setup Test")
     print("=" * 40)
     
-    # Test environment
+    # Load environment variables
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        print("❌ python-dotenv not installed")
+        return False
+    
+    # Run tests
     env_ok = test_environment()
-    
-    # Test dependencies
     deps_ok = test_dependencies()
-    
-    # Only test API if environment is good
-    api_ok = False
-    if env_ok and deps_ok:
-        api_ok = test_api_connection()
+    api_ok = test_api_connection()
     
     # Summary
     print("\n" + "=" * 40)
@@ -120,12 +101,14 @@ def main():
     print(f"   Dependencies: {'✅' if deps_ok else '❌'}")
     print(f"   API Connection: {'✅' if api_ok else '❌'}")
     
-    if env_ok and deps_ok and api_ok:
+    if all([env_ok, deps_ok, api_ok]):
         print("\n🎉 All tests passed! You're ready to run:")
         print("   streamlit run app.py")
+        return True
     else:
-        print("\n⚠️  Some tests failed. Please fix the issues above before running the app.")
-        sys.exit(1)
+        print("\n💥 Some tests failed. Please check the errors above.")
+        return False
 
 if __name__ == "__main__":
-    main()
+    success = main()
+    sys.exit(0 if success else 1)
