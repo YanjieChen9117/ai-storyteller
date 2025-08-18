@@ -50,8 +50,8 @@ An AI-powered storybook generator that creates illustrated stories from a single
 
 ### 1. Clone the Repository
 ```bash
-git clone <repository-url>
-cd storyteller
+git clone <https://github.com/SquareRoot49/ai-storyteller.git>
+cd ai-storyteller
 ```
 
 ### 2. Create Virtual Environment

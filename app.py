@@ -43,29 +43,90 @@ def ensure_dirs(base: Path) -> None:
     (base / "pages").mkdir(parents=True, exist_ok=True)
 
 def export_pdf(base_dir: Path, pages: List[Dict[str, Any]], image_size: str = IMAGE_SIZE) -> Path:
-    w, h = map(int, image_size.split("x"))
-    pdf = FPDF(orientation="P", unit="pt", format=(w, h + 200))
-    pdf.set_auto_page_break(auto=False)
-    for i, page in enumerate(pages, start=1):
-        pdf.add_page()
-        img_path = base_dir / "images" / f"page_{i:02d}.png"
-        if img_path.exists():
-            pdf.image(str(img_path), x=0, y=0, w=w, h=h)
-        pdf.set_xy(36, h + 24)
-        pdf.set_font("Helvetica", size=12)
-        pdf.multi_cell(w - 72, 16, txt=page.get("text", "")[:1200])
-    out_path = base_dir / "book.pdf"
-    pdf.output(str(out_path))
-    return out_path
+    """Export story as PDF with images and text."""
+    try:
+        w, h = map(int, image_size.split("x"))
+        pdf = FPDF(orientation="P", unit="pt", format=(w, h + 200))
+        pdf.set_auto_page_break(auto=False)
+
+        for i, page in enumerate(pages, start=1):
+            pdf.add_page()
+            img_path = base_dir / "images" / f"page_{i:02d}.png"
+
+            # Check if image exists and add it
+            if img_path.exists():
+                try:
+                    pdf.image(str(img_path), x=0, y=0, w=w, h=h)
+                except Exception as img_error:
+                    print(f"Warning: Could not add image for page {i}: {img_error}")
+            else:
+                print(f"Warning: Image not found for page {i}: {img_path}")
+
+            # Add text
+            pdf.set_xy(36, h + 24)
+            pdf.set_font("Helvetica", size=12)
+            page_text = page.get("text", "")
+            if page_text:
+                # Truncate text if too long
+                truncated_text = page_text[:1200] if len(page_text) > 1200 else page_text
+                pdf.multi_cell(w - 72, 16, txt=truncated_text)
+            else:
+                pdf.multi_cell(w - 72, 16, txt=f"Page {i} - No text available")
+
+        # Ensure output directory exists
+        base_dir.mkdir(parents=True, exist_ok=True)
+        out_path = base_dir / "book.pdf"
+
+        # Generate PDF
+        pdf.output(str(out_path))
+
+        # Verify file was created
+        if not out_path.exists():
+            raise Exception(f"PDF file was not created at {out_path}")
+
+        print(f"PDF exported successfully to: {out_path}")
+        return out_path
+
+    except Exception as e:
+        print(f"Error in export_pdf: {str(e)}")
+        raise Exception(f"PDF export failed: {str(e)}")
 
 def export_zip(base_dir: Path) -> Path:
-    import zipfile
-    out_path = base_dir / "story_export.zip"
-    with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as z:
-        for p in base_dir.rglob("*"):
-            if p.is_file():
-                z.write(p, arcname=p.relative_to(base_dir))
-    return out_path
+    """Export story files as ZIP archive."""
+    try:
+        import zipfile
+
+        # Ensure output directory exists
+        base_dir.mkdir(parents=True, exist_ok=True)
+        out_path = base_dir / "story_export.zip"
+
+        # Check if base_dir has content
+        files = list(base_dir.rglob("*"))
+        if not files:
+            raise Exception(f"No files found in {base_dir}")
+
+        print(f"Found {len(files)} files to zip")
+
+        with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as z:
+            for p in files:
+                if p.is_file():
+                    try:
+                        arcname = p.relative_to(base_dir)
+                        z.write(p, arcname=arcname)
+                        print(f"Added to ZIP: {arcname}")
+                    except Exception as file_error:
+                        print(f"Warning: Could not add file {p} to ZIP: {file_error}")
+
+        # Verify file was created
+        if not out_path.exists():
+            raise Exception(f"ZIP file was not created at {out_path}")
+
+        print(f"ZIP exported successfully to: {out_path}")
+        return out_path
+
+    except Exception as e:
+        print(f"Error in export_zip: {str(e)}")
+        raise Exception(f"ZIP export failed: {str(e)}")
 
 # ---------- Prompt templates (STUDENTS: Improve these!) ----------
 def make_bible_prompt(idea: str, pages: int, schema: dict) -> str:
@@ -139,6 +200,22 @@ st.set_page_config(page_title="AI Storyteller", layout="wide")
 st.title("Project 1: AI Storyteller")
 st.caption("🎨 Bring Your Imagination to Life! Modify prompts and add agentic features based on functions included in utils.py!")
 
+# --- Session defaults (place near top, after title) ---
+ss = st.session_state
+ss.setdefault("story_ready", False)
+ss.setdefault("generated_pages", None)
+ss.setdefault("base_dir", None)
+ss.setdefault("folder_slug", None)
+ss.setdefault("image_size", IMAGE_SIZE)
+
+# export buffers
+ss.setdefault("export_pdf_data", None)
+ss.setdefault("export_zip_data", None)
+ss.setdefault("export_pdf_filename", None)
+ss.setdefault("export_zip_filename", None)
+ss.setdefault("export_pdf_ready", False)
+ss.setdefault("export_zip_ready", False)
+
 # Add student guidance
 with st.expander("📚 Student Learning Objectives", expanded=False):
     st.markdown("""
@@ -179,18 +256,17 @@ if run_button:
                 bible, data = ensure_bible(idea, int(pages), schema, max_attempts=3, temperature=0.4)
             except Exception as json_error:
                 error_msg = str(json_error)
-                
+
                 # Handle RetryError by extracting underlying exception
                 if "RetryError" in error_msg:
                     try:
-                        # Try to extract the underlying exception
                         import re
                         match = re.search(r"Exception: (.+?)(?:\n|$)", error_msg)
                         if match:
                             error_msg = match.group(1)
                     except:
-                        pass  # Keep original error if extraction fails
-                
+                        pass
+
                 if "authentication failed" in error_msg.lower():
                     st.error(f"❌ API Authentication Error: {error_msg}")
                     st.info("💡 Please check your GEMINI_API_KEY in the .env file. Make sure it's valid and not expired.")
@@ -223,29 +299,25 @@ if run_button:
         generated_pages: List[Dict[str, Any]] = []
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
+
         with st.spinner("✍️ Writing pages and generating images..."):
             for i, beat in enumerate(bible.plot_beats[: int(pages) ]):
                 status_text.text(f"Creating page {i+1}/{len(bible.plot_beats[:int(pages)])}...")
                 progress_bar.progress((i + 1) / len(bible.plot_beats[:int(pages)]))
-                
+
                 beat_dict = beat.model_dump()
                 # Author draft (with validation and retry)
                 try:
                     page_text, text_metrics = ensure_page_text(
                         data, beat_dict, max_attempts=2, strict=True, temperature=0.7
                     )
-                    
-                    # Log text metrics for debugging
                     print(f"Page {beat.page}: Text generated successfully")
                     print(f"  Sentences: {text_metrics.get('sentence_count', 'N/A')}")
                     print(f"  Words: {text_metrics.get('word_count', 'N/A')}")
                     print(f"  Avg words/sentence: {text_metrics.get('avg_words_per_sentence', 'N/A')}")
                     print(f"  Has main character: {text_metrics.get('has_main_character', 'N/A')}")
-                    
                 except Exception as text_error:
                     print(f"Text generation failed for page {beat.page}: {str(text_error)}")
-                    # Fallback to simple text generation
                     page_text = llm_text(make_page_text_prompt(data, beat_dict), temperature=0.7)
 
                 # Designer prompt + image (with validation and retry)
@@ -255,16 +327,12 @@ if run_button:
                     )
                     img_path = base_dir / "images" / f"page_{beat.page:02d}.png"
                     save_bytes(img_path, img_bytes)
-                    
-                    # Log image metrics for debugging
                     print(f"Page {beat.page}: Image generated successfully")
                     print(f"  Size: {img_metrics.get('width', 'N/A')}x{img_metrics.get('height', 'N/A')}")
                     print(f"  Colors: {img_metrics.get('unique_colors', 'N/A')}")
                     print(f"  Entropy: {img_metrics.get('entropy', 'N/A')}")
-                    
                 except Exception as img_error:
                     print(f"Image generation failed for page {beat.page}: {str(img_error)}")
-                    # Fallback to simple image generation
                     final_image_prompt = make_image_prompt(data, beat_dict)
                     img_bytes = gen_image_b64(final_image_prompt, size=image_size)
                     img_path = base_dir / "images" / f"page_{beat.page:02d}.png"
@@ -282,33 +350,88 @@ if run_button:
         status_text.text("✅ Story complete!")
         progress_bar.empty()
 
-        # Preview
-        st.subheader("📚 Story Preview")
-        for page in generated_pages:
-            with st.container(border=True):
-                st.markdown(f"**Page {page['page']}** — {page['summary']}")
-                st.image(str(base_dir / "images" / f"page_{page['page']:02d}.png"), caption="Illustration")
-                st.markdown("**Text**")
-                st.write(page["text"])
-                with st.expander("🎨 Image prompt (final)"):
-                    st.code(page["image_prompt_final"])
+        # Persist run outputs to session for later reruns (export buttons)
+        ss.story_ready = True
+        ss.generated_pages = generated_pages
+        ss.base_dir = base_dir
+        ss.folder_slug = folder_slug
+        ss.image_size = image_size
 
-        # Exports
-        st.subheader("📦 Export Your Story")
-        colA, colB = st.columns(2)
-        with colA:
-            if st.button("📄 Export PDF"):
-                pdf_path = export_pdf(base_dir, generated_pages, image_size)
-                st.success(f"PDF created: {pdf_path}")
-                st.download_button("Download PDF", data=open(pdf_path, "rb").read(),
-                                   file_name=pdf_path.name, mime="application/pdf")
-        with colB:
-            if st.button("📁 Export ZIP"):
-                zip_path = export_zip(base_dir)
-                st.success(f"ZIP created: {zip_path}")
-                st.download_button("Download ZIP", data=open(zip_path, "rb").read(),
-                                   file_name=zip_path.name, mime="application/zip")
-                                   
     except Exception as e:
         st.error(f"❌ Error generating story: {str(e)}")
         st.info("💡 Tip: Check your API key and internet connection. If the error persists, try simplifying your story idea.")
+
+# ======================
+# Render Preview & Exports on every rerun when story is ready
+# ======================
+if ss.story_ready and ss.generated_pages and ss.base_dir:
+    st.subheader("📚 Story Preview")
+    for page in ss.generated_pages:
+        with st.container(border=True):
+            st.markdown(f"**Page {page['page']}** — {page['summary']}")
+            st.image(str(Path(ss.base_dir) / "images" / f"page_{page['page']:02d}.png"), caption="Illustration")
+            st.markdown("**Text**")
+            st.write(page["text"])
+            with st.expander("🎨 Image prompt (final)"):
+                st.code(page["image_prompt_final"])
+
+    st.subheader("📦 Export Your Story")
+
+    colA, colB = st.columns(2)
+    with colA:
+        if st.button("📄 Export PDF", key="export_pdf_btn"):
+            try:
+                with st.spinner("Creating PDF..."):
+                    pdf_path = export_pdf(Path(ss.base_dir), ss.generated_pages, ss.image_size)
+                    if pdf_path.exists():
+                        with open(pdf_path, "rb") as f:
+                            ss.export_pdf_data = f.read()
+                        ss.export_pdf_filename = f"{ss.folder_slug}_storybook.pdf"
+                        ss.export_pdf_ready = True
+                        st.success("✅ PDF created successfully!")
+                    else:
+                        st.error("❌ PDF file was not created")
+            except Exception as e:
+                st.error(f"❌ Error creating PDF: {str(e)}")
+
+        if ss.export_pdf_ready and ss.export_pdf_data is not None:
+            st.download_button(
+                "📥 Download PDF",
+                data=ss.export_pdf_data,
+                file_name=ss.export_pdf_filename,
+                mime="application/pdf",
+                key="download_pdf_btn"
+            )
+            if st.button("Clear PDF", key="clear_pdf_btn"):
+                ss.export_pdf_data = None
+                ss.export_pdf_filename = None
+                ss.export_pdf_ready = False
+
+    with colB:
+        if st.button("📁 Export ZIP", key="export_zip_btn"):
+            try:
+                with st.spinner("Creating ZIP..."):
+                    zip_path = export_zip(Path(ss.base_dir))
+                    if zip_path.exists():
+                        with open(zip_path, "rb") as f:
+                            ss.export_zip_data = f.read()
+                        ss.export_zip_filename = f"{ss.folder_slug}_story_export.zip"
+                        ss.export_zip_ready = True
+                        st.success("✅ ZIP created successfully!")
+                    else:
+                        st.error("❌ ZIP file was not created")
+            except Exception as e:
+                st.error(f"❌ Error creating ZIP: {str(e)}")
+
+        if ss.export_zip_ready and ss.export_zip_data is not None:
+            st.download_button(
+                "📥 Download ZIP",
+                data=ss.export_zip_data,
+                file_name=ss.export_zip_filename,
+                mime="application/zip",
+                key="download_zip_btn"
+            )
+            if st.button("Clear ZIP", key="clear_zip_btn"):
+                ss.export_zip_data = None
+                ss.export_zip_filename = None
+                ss.export_zip_ready = False
