@@ -268,7 +268,7 @@ def placeholder_image(prompt: str, size: str = "1024x1024") -> bytes:
 
 # --- Configuration ---
 MODEL_TEXT = "gemini-2.5-flash-lite"
-IMAGE_SIZE = "1024x1024"
+IMAGE_SIZE = "700x700"
 
 # --- Utility functions ---
 def save_bytes(path: Path, data: bytes) -> None:
@@ -298,17 +298,27 @@ def make_bible_repair_prompt(schema: dict, idea: str, pages: int, prev: dict, er
 Previous attempt (fix this JSON):
 {json.dumps(prev, indent=2, ensure_ascii=False)}
 
-IMPORTANT REQUIREMENTS:
+IMPORTANT: You must create a STORY, not a schema definition. The response should contain actual story content.
+
+REQUIREMENTS:
 1. Output ONLY valid JSON - no markdown, no explanations, no extra text
-2. Must exactly match this schema: {json.dumps(schema, ensure_ascii=False)}
-3. plot_beats array MUST contain exactly {pages} items
+2. Create a complete story with {pages} pages
+3. plot_beats array MUST contain exactly {pages} items with actual story content
 4. Each plot_beat must have: {{ "page": n, "summary": "...(<=20 words)", "image_prompt": "...(<=30 words)" }}
 5. Include art_style with: style_tags (array), palette (array), composition_rules (string)
+6. Create characters with names, roles, and visual descriptions
+7. Set a story title in meta.title
+
+STORY STRUCTURE:
+- meta: {{ "title": "Story Title", "target_audience": "children" }}
+- characters: List of characters with names, roles, personalities, visual_anchors
+- art_style: {{ "style_tags": ["watercolor", "whimsical"], "palette": ["warm", "bright"], "composition_rules": "storybook framing" }}
+- plot_beats: Array of {pages} story pages with summaries and image prompts
 
 Story idea: {idea}
 Target pages: {pages}
 
-Fix the JSON and return ONLY the corrected version:"""
+Fix the JSON and return ONLY the corrected version with actual story content:"""
 
 def make_bible_prompt_local(idea: str, pages: int, schema: dict) -> str:
     """在 utils 内部提供与 app.make_bible_prompt 等价的提示，避免循环依赖。"""
@@ -317,12 +327,22 @@ def make_bible_prompt_local(idea: str, pages: int, schema: dict) -> str:
 Create a Story Bible for: "{idea}"
 Target length: {pages} pages
 
+IMPORTANT: You must create a STORY, not a schema definition. The response should contain actual story content.
+
 REQUIREMENTS:
 1. Output ONLY valid JSON - no markdown, no explanations, no extra text
-2. Must exactly match this schema: {json.dumps(schema, ensure_ascii=False)}
-3. plot_beats array MUST contain exactly {pages} items
+2. Create a complete story with {pages} pages
+3. plot_beats array MUST contain exactly {pages} items with actual story content
 4. Each plot_beat must have: {{ "page": n, "summary": "...(<=20 words)", "image_prompt": "...(<=30 words)" }}
 5. Include art_style with: style_tags (array), palette (array), composition_rules (string)
+6. Create characters with names, roles, and visual descriptions
+7. Set a story title in meta.title
+
+STORY STRUCTURE:
+- meta: {{ "title": "Story Title", "target_audience": "children" }}
+- characters: List of characters with names, roles, personalities, visual_anchors
+- art_style: {{ "style_tags": ["watercolor", "whimsical"], "palette": ["warm", "bright"], "composition_rules": "storybook framing" }}
+- plot_beats: Array of {pages} story pages with summaries and image prompts
 
 Focus on:
 - Clear character development
@@ -330,7 +350,7 @@ Focus on:
 - Visual consistency
 - Age-appropriate themes
 
-Return ONLY the JSON object:"""
+Return ONLY the JSON object with the actual story content:"""
 
 def ensure_bible(idea: str, pages: int, schema: dict, max_attempts: int = 3, temperature: float = 0.3):
     """

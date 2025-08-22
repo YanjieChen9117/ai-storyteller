@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 import streamlit as st
+from streamlit.components.v1 import html as st_html
 from fpdf import FPDF
 
 from utils import (
@@ -41,6 +42,273 @@ def slugify(text: str) -> str:
 def ensure_dirs(base: Path) -> None:
     (base / "images").mkdir(parents=True, exist_ok=True)
     (base / "pages").mkdir(parents=True, exist_ok=True)
+
+def render_flipbook_spread(pages, base_dir: Path, book_w: int = 1200, book_h: int = 780,
+                           author: str | None = None, title: str | None = None):
+    """两页展开的翻书效果：左页=整幅插图，右页=文字排版，带书脊阴影与翻页动画。"""
+    import base64
+
+    def b64img(p: Path) -> str:
+        return base64.b64encode(p.read_bytes()).decode("utf-8")
+
+    page_divs = []
+    for p in pages:
+        img_path = base_dir / "images" / f"page_{p['page']:02d}.png"
+        
+        # 调试信息：检查图片文件状态
+        if img_path.exists():
+            img_b64 = b64img(img_path)
+            print(f"✅ 翻书模式：页面 {p['page']} 图片加载成功，大小: {img_path.stat().st_size} bytes")
+        else:
+            img_b64 = ""
+            print(f"❌ 翻书模式：页面 {p['page']} 图片文件不存在: {img_path}")
+            # 尝试从其他位置查找图片
+            alt_paths = [
+                base_dir / f"page_{p['page']:02d}.png",
+                base_dir / "images" / f"page_{p['page']:02d}.jpg",
+                base_dir / f"page_{p['page']:02d}.jpg"
+            ]
+            for alt_path in alt_paths:
+                if alt_path.exists():
+                    img_b64 = b64img(alt_path)
+                    print(f"✅ 翻书模式：页面 {p['page']} 从备用路径加载图片: {alt_path}")
+                    break
+        
+        text_html = (p.get("text") or "").replace("\n", "<br>")
+        page_divs.append(f"""
+        <div class="page" data-page="{p['page']}" style="display: none;">
+          <div class="spread">
+            <div class="left-panel">
+              {f'<img src="data:image/png;base64,{img_b64}" alt="Page {p["page"]}" class="page-image" />' if img_b64 else f'<div style="background:#f0f0f0;display:flex;align-items:center;justify-content:center;height:100%;color:#666;font-size:14px;border-radius:4px;">图片加载失败<br/>Page {p["page"]}</div>'}
+            </div>
+            <div class="right-panel">
+              <div class="page-title">{(title or "").upper()}</div>
+              <div class="page-content">{text_html}</div>
+              <div class="page-number">{p['page']}</div>
+            </div>
+          </div>
+        </div>
+        """)
+
+    html = f"""
+    <style>
+      :root {{
+        --paper-bg: #fffdf7; --ink: #2b2622; --ink-dim: #6b625a; --accent: #6b4f2c;
+        --shadow: rgba(0,0,0,0.3); --page-turn: rgba(0,0,0,0.1);
+      }}
+      
+      .flip-container {{
+        width: {book_w}px; height: {book_h + 120}px; margin: 0 auto; position: relative;
+        perspective: 1200px; perspective-origin: center;
+      }}
+      
+      .book {{
+        width: 100%; height: 100%; position: relative; transform-style: preserve-3d;
+        transition: transform 0.8s cubic-bezier(0.645, 0.045, 0.355, 1);
+      }}
+      
+      .page {{
+        position: absolute; width: 100%; height: {book_h}px; 
+        transform-origin: left center; transition: transform 0.8s cubic-bezier(0.645, 0.045, 0.355, 1);
+        backface-visibility: hidden; box-shadow: 0 0 20px var(--shadow);
+        border-radius: 8px; overflow: hidden;
+      }}
+      
+      .page.active {{
+        display: block !important; z-index: 10;
+      }}
+      
+      .page.flipping {{
+        z-index: 20; box-shadow: 0 0 30px var(--page-turn);
+      }}
+      
+      .spread {{
+        display: grid; grid-template-columns: 1fr 1fr; height: 100%; position: relative;
+        background: var(--paper-bg); border-radius: 8px; overflow: hidden;
+      }}
+      
+      .left-panel, .right-panel {{
+        padding: 30px; position: relative; display: flex; flex-direction: column;
+      }}
+      
+      .left-panel {{
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-right: 1px solid #dee2e6;
+      }}
+      
+      .right-panel {{
+        background: var(--paper-bg); font-family: 'Georgia', serif; color: var(--ink);
+        line-height: 1.8; font-size: 18px; position: relative;
+        display: flex; flex-direction: column; height: 100%;
+        overflow: hidden; /* 防止内容溢出 */
+      }}
+      
+      .page-image {{
+        width: 100%; height: 100%; object-fit: cover; border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      }}
+      
+      .page-content {{
+        flex: 1; overflow-y: auto; padding-right: 10px; text-align: justify;
+        font-size: 16px; line-height: 1.6; color: var(--ink);
+        word-wrap: break-word; hyphens: auto; 
+        padding-bottom: 60px; /* 为页码留出空间 */
+        max-height: calc(100% - 80px); /* 确保内容不超出容器 */
+      }}
+      
+      .page-title {{
+        font-size: 12px; color: var(--ink-dim); text-transform: uppercase;
+        letter-spacing: 0.1em; margin-bottom: 15px; font-weight: 600;
+        padding: 8px 0; border-bottom: 1px solid rgba(107, 79, 44, 0.2);
+      }}
+      
+      .page-number {{
+        position: absolute; bottom: 15px; right: 20px;
+        font-size: 12px; color: var(--ink-dim); font-weight: 500;
+        background: rgba(255,255,255,0.8); padding: 4px 8px; border-radius: 4px;
+      }}
+      
+      .controls {{
+        text-align: center; margin: 0 auto; padding: 20px; 
+        position: absolute; bottom: 20px; left: 0; right: 0;
+        background: linear-gradient(to top, rgba(255,255,255,0.95), rgba(255,255,255,0.8));
+        backdrop-filter: blur(10px);
+        border-radius: 0 0 8px 8px;
+      }}
+      
+      .btn {{
+        padding: 12px 24px; margin: 0 8px; border-radius: 25px;
+        border: 2px solid var(--accent); background: white; color: var(--accent);
+        cursor: pointer; font-weight: 600; transition: all 0.3s ease;
+        font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      }}
+      
+      .btn:hover {{
+        background: var(--accent); color: white; transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(107, 79, 44, 0.3);
+      }}
+      
+      .btn:disabled {{
+        opacity: 0.5; cursor: not-allowed; transform: none;
+      }}
+      
+      .page-indicator {{
+        display: inline-block; margin: 0 20px; font-size: 14px;
+        color: var(--ink-dim); font-weight: 500;
+      }}
+      
+      .book-spine {{
+        position: absolute; left: 50%; top: 0; bottom: 0; width: 4px;
+        background: linear-gradient(90deg, rgba(0,0,0,0.1), rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.1));
+        transform: translateX(-50%); z-index: 5;
+      }}
+    </style>
+
+    <div class="flip-container">
+      <div class="book-spine"></div>
+      <div class="book" id="book">
+        {''.join(page_divs)}
+      </div>
+      
+      <div class="controls">
+        <button class="btn" id="prevBtn" onclick="previousPage()">⟵ 上一页</button>
+        <span class="page-indicator">
+          <span id="currentPage">1</span> / <span id="totalPages">{len(pages)}</span>
+        </span>
+        <button class="btn" id="nextBtn" onclick="nextPage()">下一页 ⟶</button>
+      </div>
+    </div>
+
+    <script>
+      let currentPageIndex = 0;
+      const totalPages = {len(pages)};
+      const pages = document.querySelectorAll('.page');
+      
+      function updatePageDisplay() {{
+        // 隐藏所有页面
+        pages.forEach((page, index) => {{
+          page.classList.remove('active');
+          page.style.display = 'none';
+        }});
+        
+        // 显示当前页面
+        if (pages[currentPageIndex]) {{
+          pages[currentPageIndex].classList.add('active');
+          pages[currentPageIndex].style.display = 'block';
+        }}
+        
+        // 更新页码显示
+        document.getElementById('currentPage').textContent = currentPageIndex + 1;
+        
+        // 更新按钮状态
+        document.getElementById('prevBtn').disabled = currentPageIndex === 0;
+        document.getElementById('nextBtn').disabled = currentPageIndex === totalPages - 1;
+      }}
+      
+      function nextPage() {{
+        if (currentPageIndex < totalPages - 1) {{
+          const currentPage = pages[currentPageIndex];
+          currentPage.classList.add('flipping');
+          
+          setTimeout(() => {{
+            currentPageIndex++;
+            updatePageDisplay();
+            currentPage.classList.remove('flipping');
+          }}, 400);
+        }}
+      }}
+      
+      function previousPage() {{
+        if (currentPageIndex > 0) {{
+          const currentPage = pages[currentPageIndex];
+          currentPage.classList.add('flipping');
+          
+          setTimeout(() => {{
+            currentPageIndex--;
+            updatePageDisplay();
+            currentPage.classList.remove('flipping');
+          }}, 400);
+        }}
+      }}
+      
+      // 键盘导航
+      document.addEventListener('keydown', (e) => {{
+        if (e.key === 'ArrowRight') nextPage();
+        if (e.key === 'ArrowLeft') previousPage();
+      }});
+      
+      // 触摸滑动支持
+      let touchStartX = 0;
+      let touchEndX = 0;
+      
+      document.addEventListener('touchstart', (e) => {{
+        touchStartX = e.changedTouches[0].screenX;
+      }});
+      
+      document.addEventListener('touchend', (e) => {{
+        touchEndX = e.changedTouches[0].screenX;
+        handleSwipe();
+      }});
+      
+      function handleSwipe() {{
+        const swipeThreshold = 50;
+        const diff = touchStartX - touchEndX;
+        
+        if (Math.abs(diff) > swipeThreshold) {{
+          if (diff > 0) {{
+            nextPage();
+          }} else {{
+            previousPage();
+          }}
+        }}
+      }}
+      
+      // 初始化显示
+      updatePageDisplay();
+    </script>
+    """
+    
+    st_html(html, height=book_h + 150, scrolling=False)
 
 def export_pdf(base_dir: Path, pages: List[Dict[str, Any]], image_size: str = IMAGE_SIZE) -> Path:
     """Export story as PDF with images and text."""
@@ -350,6 +618,29 @@ if run_button:
         status_text.text("✅ Story complete!")
         progress_bar.empty()
 
+        # 调试信息：验证生成的文件
+        print(f"🔍 故事生成完成，验证文件状态:")
+        print(f"   - 基础目录: {base_dir}")
+        print(f"   - 生成页面数: {len(generated_pages)}")
+        
+        # 检查图片文件
+        images_dir = base_dir / "images"
+        if images_dir.exists():
+            image_files = list(images_dir.glob("*.png"))
+            print(f"   - 图片目录存在，找到 {len(image_files)} 个PNG文件")
+            for img_file in image_files:
+                print(f"     - {img_file.name}: {img_file.stat().st_size} bytes")
+        else:
+            print(f"   - ❌ 图片目录不存在: {images_dir}")
+        
+        # 检查页面文件
+        pages_dir = base_dir / "pages"
+        if pages_dir.exists():
+            page_files = list(pages_dir.glob("*.json"))
+            print(f"   - 页面目录存在，找到 {len(page_files)} 个JSON文件")
+        else:
+            print(f"   - ❌ 页面目录不存在: {pages_dir}")
+
         # Persist run outputs to session for later reruns (export buttons)
         ss.story_ready = True
         ss.generated_pages = generated_pages
@@ -359,14 +650,21 @@ if run_button:
 
         # Immediately show preview after generation
         st.subheader("📚 Story Preview")
-        for page in generated_pages:
-            with st.container(border=True):
-                st.markdown(f"**Page {page['page']}** — {page['summary']}")
-                st.image(str(base_dir / "images" / f"page_{page['page']:02d}.png"), caption="Illustration")
-                st.markdown("**Text**")
-                st.write(page["text"])
-                with st.expander("🎨 Image prompt (final)"):
-                    st.code(page["image_prompt_final"])
+
+        # 根据图片尺寸计算翻书尺寸
+        try:
+            w, h = map(int, str(image_size).lower().split("x"))
+        except Exception:
+            w, h = 1024, 1024
+        book_w = int(max(w * 1.9, 900))
+        book_h = int(max(h * 0.9, 600))
+
+        title = (folder_slug or "").replace("-", " ").title()
+        author = None
+
+        # 直接使用翻书模式，不再提供选择
+        render_flipbook_spread(generated_pages, base_dir, book_w=book_w, book_h=book_h,
+                               title=title, author=author)
 
         # Show export options
         st.subheader("📦 Export Your Story")

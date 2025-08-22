@@ -73,13 +73,13 @@ GEMINI_API_KEY=your_gemini_api_key_here
 # Optional: Image generation model (default: imagen-4.0-generate-001)
 MODEL_IMAGE=imagen-4.0-generate-001
 # Optional: Image size (default: 1024x1024)
-IMAGE_SIZE=1024x1024
+IMAGE_SIZE=700x700
 ```
 
 **Note**: Model configuration can be customized via environment variables:
 - Text generation: `gemini-2.5-flash-lite` (hardcoded)
 - Image generation: `MODEL_IMAGE` env var (default: `imagen-4.0-generate-001`)
-- Image size: `IMAGE_SIZE` env var (default: `1024x1024`)
+- Image size: `IMAGE_SIZE` env var (default: `700x700`)
 
 **Available Imagen models**:
 - `imagen-4.0-generate-001` (Standard, recommended)
