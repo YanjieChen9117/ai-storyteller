@@ -21,7 +21,7 @@ if not api_key:
 _client = genai.Client(api_key=api_key)
 
 # Initialize Imagen client (if not exists)
-_genai_client = genai.Client()  # 读取 GEMINI_API_KEY
+_genai_client = genai.Client()  # Read GEMINI_API_KEY
 
 
 # --- Story Bible types ---
@@ -461,7 +461,7 @@ def compute_readability_metrics(text: str) -> Dict[str, Any]:
     word_count = _word_count(text)
     avg_words_per_sentence = round(word_count / max(len(sentences), 1), 1)
 
-    # Rough syllable count for English-like text; for other languages returns None gracefully
+    # Rough syllable count for English-like text; for other languages returns None
     tokens = re.findall(r"\b[a-zA-Z]+\b", text)
     def count_syllables(word: str) -> int:
         w = word.lower()

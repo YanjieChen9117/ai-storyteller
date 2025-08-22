@@ -45,7 +45,7 @@ def ensure_dirs(base: Path) -> None:
 
 def render_flipbook_spread(pages, base_dir: Path, book_w: int = 1200, book_h: int = 780,
                            author: str | None = None, title: str | None = None):
-    """两页展开的翻书效果：左页=整幅插图，右页=文字排版，带书脊阴影与翻页动画。"""
+    """Two-page spread flipbook: left = full illustration, right = text layout, with spine shadow and flip animation."""
     import base64
 
     def b64img(p: Path) -> str:
@@ -55,14 +55,14 @@ def render_flipbook_spread(pages, base_dir: Path, book_w: int = 1200, book_h: in
     for p in pages:
         img_path = base_dir / "images" / f"page_{p['page']:02d}.png"
         
-        # 调试信息：检查图片文件状态
+        # Debug: check image file state
         if img_path.exists():
             img_b64 = b64img(img_path)
-            print(f"✅ 翻书模式：页面 {p['page']} 图片加载成功，大小: {img_path.stat().st_size} bytes")
+            print(f"✅ Flipbook: page {p['page']} image loaded, size: {img_path.stat().st_size} bytes")
         else:
             img_b64 = ""
-            print(f"❌ 翻书模式：页面 {p['page']} 图片文件不存在: {img_path}")
-            # 尝试从其他位置查找图片
+            print(f"❌ Flipbook: page {p['page']} image file not found: {img_path}")
+            # Try alternative locations
             alt_paths = [
                 base_dir / f"page_{p['page']:02d}.png",
                 base_dir / "images" / f"page_{p['page']:02d}.jpg",
@@ -71,7 +71,7 @@ def render_flipbook_spread(pages, base_dir: Path, book_w: int = 1200, book_h: in
             for alt_path in alt_paths:
                 if alt_path.exists():
                     img_b64 = b64img(alt_path)
-                    print(f"✅ 翻书模式：页面 {p['page']} 从备用路径加载图片: {alt_path}")
+                    print(f"✅ Flipbook: page {p['page']} loaded from fallback path: {alt_path}")
                     break
         
         text_html = (p.get("text") or "").replace("\n", "<br>")
@@ -79,7 +79,7 @@ def render_flipbook_spread(pages, base_dir: Path, book_w: int = 1200, book_h: in
         <div class="page" data-page="{p['page']}" style="display: none;">
           <div class="spread">
             <div class="left-panel">
-              {f'<img src="data:image/png;base64,{img_b64}" alt="Page {p["page"]}" class="page-image" />' if img_b64 else f'<div style="background:#f0f0f0;display:flex;align-items:center;justify-content:center;height:100%;color:#666;font-size:14px;border-radius:4px;">图片加载失败<br/>Page {p["page"]}</div>'}
+              {f'<img src="data:image/png;base64,{img_b64}" alt="Page {p["page"]}" class="page-image" />' if img_b64 else f'<div style="background:#f0f0f0;display:flex;align-items:center;justify-content:center;height:100%;color:#666;font-size:14px;border-radius:4px;">Image load failed<br/>Page {p["page"]}</div>'}
             </div>
             <div class="right-panel">
               <div class="page-title">{(title or "").upper()}</div>
@@ -140,7 +140,7 @@ def render_flipbook_spread(pages, base_dir: Path, book_w: int = 1200, book_h: in
         background: var(--paper-bg); font-family: 'Georgia', serif; color: var(--ink);
         line-height: 1.8; font-size: 18px; position: relative;
         display: flex; flex-direction: column; height: 100%;
-        overflow: hidden; /* 防止内容溢出 */
+        overflow: hidden; /* Prevent overflow */
       }}
       
       .page-image {{
@@ -152,8 +152,8 @@ def render_flipbook_spread(pages, base_dir: Path, book_w: int = 1200, book_h: in
         flex: 1; overflow-y: auto; padding-right: 10px; text-align: justify;
         font-size: 16px; line-height: 1.6; color: var(--ink);
         word-wrap: break-word; hyphens: auto; 
-        padding-bottom: 60px; /* 为页码留出空间 */
-        max-height: calc(100% - 80px); /* 确保内容不超出容器 */
+        padding-bottom: 60px; /* Reserve space for page number */
+        max-height: calc(100% - 80px); /* Ensure content fits */
       }}
       
       .page-title {{
@@ -211,11 +211,11 @@ def render_flipbook_spread(pages, base_dir: Path, book_w: int = 1200, book_h: in
       </div>
       
       <div class="controls">
-        <button class="btn" id="prevBtn" onclick="previousPage()">⟵ 上一页</button>
+        <button class="btn" id="prevBtn" onclick="previousPage()">⟵ Previous</button>
         <span class="page-indicator">
           <span id="currentPage">1</span> / <span id="totalPages">{len(pages)}</span>
         </span>
-        <button class="btn" id="nextBtn" onclick="nextPage()">下一页 ⟶</button>
+        <button class="btn" id="nextBtn" onclick="nextPage()">Next ⟶</button>
       </div>
     </div>
 
@@ -225,22 +225,22 @@ def render_flipbook_spread(pages, base_dir: Path, book_w: int = 1200, book_h: in
       const pages = document.querySelectorAll('.page');
       
       function updatePageDisplay() {{
-        // 隐藏所有页面
+        // Hide all pages
         pages.forEach((page, index) => {{
           page.classList.remove('active');
           page.style.display = 'none';
         }});
         
-        // 显示当前页面
+        // Show current page
         if (pages[currentPageIndex]) {{
           pages[currentPageIndex].classList.add('active');
           pages[currentPageIndex].style.display = 'block';
         }}
         
-        // 更新页码显示
+        // Update page indicator
         document.getElementById('currentPage').textContent = currentPageIndex + 1;
         
-        // 更新按钮状态
+        // Update button states
         document.getElementById('prevBtn').disabled = currentPageIndex === 0;
         document.getElementById('nextBtn').disabled = currentPageIndex === totalPages - 1;
       }}
@@ -271,13 +271,13 @@ def render_flipbook_spread(pages, base_dir: Path, book_w: int = 1200, book_h: in
         }}
       }}
       
-      // 键盘导航
+      // Keyboard navigation
       document.addEventListener('keydown', (e) => {{
         if (e.key === 'ArrowRight') nextPage();
         if (e.key === 'ArrowLeft') previousPage();
       }});
       
-      // 触摸滑动支持
+      // Touch swipe support
       let touchStartX = 0;
       let touchEndX = 0;
       
@@ -303,7 +303,7 @@ def render_flipbook_spread(pages, base_dir: Path, book_w: int = 1200, book_h: in
         }}
       }}
       
-      // 初始化显示
+      // Initialize display
       updatePageDisplay();
     </script>
     """
@@ -316,9 +316,9 @@ def export_pdf(base_dir: Path, pages: List[Dict[str, Any]], image_size: str = IM
                include_toc: bool = False) -> Path:
     """Export story as PDF with images and text.
     TODO[Publisher-Advanced]:
-    - 当 include_toc=True 时，生成目录页（page -> summary）。
-    - 当 cover_* 提供时，生成封面页（美观排版，可加入主配色）。
-    当前基线：参数接收但默认行为不变（不主动生成封面/目录）。
+    - When include_toc=True, generate a table of contents (page -> summary).
+    - When cover_* provided, generate a styled cover page (can use main palette).
+    Baseline: parameters are accepted but cover/TOC are not generated yet.
     """
     try:
         w, h = map(int, image_size.split("x"))
@@ -527,8 +527,8 @@ with st.form("controls", clear_on_submit=False):
     # --- Advanced controls (students can toggle) ---
     with st.expander("⚙️ Advanced (for 2-3h assignment)"):
         st.markdown("""
-        - 这些开关与输入为作业高级项服务。默认关闭，不影响基线。
-        - 完成 TODO 后，再开启可见效果。
+        - These toggles are for the advanced assignment. Default OFF to keep baseline behavior.
+        - Turn them on after completing the corresponding TODOs.
         """)
         enforce_palette = st.checkbox("Enforce palette consistency (images)", value=False,
                                      help="Use art_style.palette to validate images' dominant colors (utils.validate_image)")
@@ -654,28 +654,28 @@ if run_button:
         status_text.text("✅ Story complete!")
         progress_bar.empty()
 
-        # 调试信息：验证生成的文件
-        print(f"🔍 故事生成完成，验证文件状态:")
-        print(f"   - 基础目录: {base_dir}")
-        print(f"   - 生成页面数: {len(generated_pages)}")
+        # Debug: verify generated files
+        print(f"🔍 Story generation complete, verifying files:")
+        print(f"   - Base dir: {base_dir}")
+        print(f"   - Pages generated: {len(generated_pages)}")
         
-        # 检查图片文件
+        # Check images dir
         images_dir = base_dir / "images"
         if images_dir.exists():
             image_files = list(images_dir.glob("*.png"))
-            print(f"   - 图片目录存在，找到 {len(image_files)} 个PNG文件")
+            print(f"   - Images dir exists, found {len(image_files)} PNG files")
             for img_file in image_files:
                 print(f"     - {img_file.name}: {img_file.stat().st_size} bytes")
         else:
-            print(f"   - ❌ 图片目录不存在: {images_dir}")
+            print(f"   - ❌ Images dir missing: {images_dir}")
         
-        # 检查页面文件
+        # Check pages dir
         pages_dir = base_dir / "pages"
         if pages_dir.exists():
             page_files = list(pages_dir.glob("*.json"))
-            print(f"   - 页面目录存在，找到 {len(page_files)} 个JSON文件")
+            print(f"   - Pages dir exists, found {len(page_files)} JSON files")
         else:
-            print(f"   - ❌ 页面目录不存在: {pages_dir}")
+            print(f"   - ❌ Pages dir missing: {pages_dir}")
 
         # Persist run outputs to session for later reruns (export buttons)
         ss.story_ready = True
@@ -687,7 +687,7 @@ if run_button:
         # Immediately show preview after generation
         st.subheader("📚 Story Preview")
 
-        # 根据图片尺寸计算翻书尺寸
+        # Compute flipbook size based on image size
         try:
             w, h = map(int, str(image_size).lower().split("x"))
         except Exception:
@@ -698,7 +698,7 @@ if run_button:
         title = (folder_slug or "").replace("-", " ").title()
         author = None
 
-        # 直接使用翻书模式，不再提供选择
+        # Always use flipbook spread mode (single option)
         render_flipbook_spread(generated_pages, base_dir, book_w=book_w, book_h=book_h,
                                title=title, author=author)
 

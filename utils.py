@@ -22,7 +22,7 @@ if not api_key:
 _client = genai.Client(api_key=api_key)
 
 # Initialize Imagen client (if not exists)
-_genai_client = genai.Client()  # 读取 GEMINI_API_KEY
+_genai_client = genai.Client()  # Read GEMINI_API_KEY
 
 # --- Story Bible types (students may expand) ---
 class Character(BaseModel):
@@ -120,11 +120,11 @@ Remember: Return ONLY the JSON object, nothing else."""
             text = resp.text or ""
             if not text.strip():
                 raise ValueError("Empty response from Gemini")
-            # 剥 ```json ... ```
+            # Strip ```json ... ``` blocks
             mobj = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.S)
             if mobj:
                 text = mobj.group(1)
-            # 直接解析
+            # Direct parse
             try:
                 return json.loads(text)
             except json.JSONDecodeError:
@@ -170,13 +170,13 @@ def gen_image_b64(prompt: str,
             prompt=prompt,
             config=types.GenerateImagesConfig(
                 number_of_images=1,
-                image_size=image_size,   # <-- 修正：正确字段名
+                image_size=image_size,   # Correct field name
                 aspect_ratio=aspect,
             ),
         )
         png = resp.generated_images[0].image.image_bytes  # PNG bytes
 
-        # 统一到请求尺寸，避免尺寸偏差导致后续校验/展示异常
+        # Normalize to requested size to avoid downstream validation/display issues
         try:
             from PIL import Image
             import io
@@ -193,11 +193,11 @@ def gen_image_b64(prompt: str,
 
     except Exception as e:
         print(f"[Imagen4 fallback] {type(e).__name__}: {e}")
-        # 占位图兜底
+        # Placeholder fallback
         try:
             return placeholder_image(prompt, size)
         except Exception:
-            # 二层兜底：纯色 PNG
+            # Secondary fallback: solid-color PNG
             from io import BytesIO
             from PIL import Image
             buf = BytesIO()
@@ -284,7 +284,7 @@ def write_text(path: Path, text: str) -> None:
 
 # --- Architect functions for Story Bible generation ---
 def validate_bible(data: dict) -> tuple[bool, Optional[str]]:
-    """用 StoryBible(**data) 做结构校验。"""
+    """Validate structure using StoryBible(**data)."""
     try:
         StoryBible(**data)
         return True, None
@@ -292,7 +292,7 @@ def validate_bible(data: dict) -> tuple[bool, Optional[str]]:
         return False, str(e)
 
 def make_bible_repair_prompt(schema: dict, idea: str, pages: int, prev: dict, error: str) -> str:
-    """生成修复提示词。"""
+    """Generate repair prompt for invalid Story Bible output."""
     return f"""The previous Story Bible generation failed with this error: {error}
 
 Previous attempt (fix this JSON):
@@ -321,7 +321,7 @@ Target pages: {pages}
 Fix the JSON and return ONLY the corrected version with actual story content:"""
 
 def make_bible_prompt_local(idea: str, pages: int, schema: dict) -> str:
-    """在 utils 内部提供与 app.make_bible_prompt 等价的提示，避免循环依赖。"""
+    """Local equivalent of app.make_bible_prompt to avoid circular import."""
     return f"""You are The Architect - a master storyteller who creates structured story plans.
 
 Create a Story Bible for: "{idea}"
@@ -385,9 +385,7 @@ def ensure_bible(idea: str, pages: int, schema: dict, max_attempts: int = 3, tem
 
 # --- Designer functions for image generation and validation ---
 def build_style_pack(bible: dict) -> str:
-    """
-    从 bible['art_style'] 取出 style 信息，返回简洁的 style 描述串。
-    """
+    """Extract style info from bible['art_style'] and return concise style string."""
     art_style = bible.get('art_style', {})
     style_parts = []
     style_tags = art_style.get('style_tags', [])
@@ -406,13 +404,13 @@ def build_style_pack(bible: dict) -> str:
 
 def build_image_prompt(bible: dict, beat: dict) -> str:
     """
-    TODO[Designer]: 组合风格包(style_pack) + 角色锚点(anchors) + 场景(scene)
-    目标：保证跨页角色与构图一致性，并将配色/风格落入提示词。
-    要求：
-    - 从 bible['art_style'] 中抽取 style_tags/palette/composition_rules
-    - 汇总 characters.visual_anchors（去重，最多3个）
-    - 拼接 beat['image_prompt'] 场景，限制长度 <= 150
-    临时基线：仅返回场景，未做风格与锚点融合。
+    TODO[Designer]: Combine style_pack + character anchors + scene.
+    Goal: ensure cross-page consistency and include palette/style in prompt.
+    Requirements:
+    - Extract style_tags/palette/composition_rules from bible['art_style']
+    - Aggregate characters.visual_anchors (dedupe, at most 3)
+    - Merge beat['image_prompt'] scene, limit length <= 150
+    Baseline: return scene-only without style/anchors.
     """
     scene = beat.get('image_prompt', '')
     if len(scene) > 150:
@@ -420,9 +418,7 @@ def build_image_prompt(bible: dict, beat: dict) -> str:
     return f"storybook illustration. Scene: {scene}"
 
 def analyze_image_bytes(img_bytes: bytes) -> Dict[str, Any]:
-    """
-    用 PIL 读取，返回：width, height, aspect, unique_colors(近似), entropy(粗略), format。
-    """
+    """Use PIL to read image; return width, height, aspect, unique_colors(approx), entropy(rough), format."""
     try:
         from PIL import Image
         import io
@@ -468,11 +464,7 @@ def analyze_image_bytes(img_bytes: bytes) -> Dict[str, Any]:
 
 # --- Advanced metrics scaffolding (students extend) ---
 def compute_readability_metrics(text: str) -> Dict[str, Any]:
-    """
-    TODO[Author-Advanced]: 计算可读性指标，用于更严格的文本校验与修复回路。
-    建议实现：Flesch-Kincaid、词汇多样性、平均音节数等。
-    当前占位：返回粗略词/句统计作为基线。
-    """
+    """TODO[Author-Advanced]: Compute readability metrics (e.g., FK grade, lexical diversity, syllables). Placeholder returns coarse counts."""
     sentences = _split_sentences(text)
     word_count = _word_count(text)
     avg_words_per_sentence = round(word_count / max(len(sentences), 1), 1)
@@ -487,10 +479,7 @@ def compute_readability_metrics(text: str) -> Dict[str, Any]:
     }
 
 def detect_repetition(text: str) -> Dict[str, Any]:
-    """
-    TODO[Author-Advanced]: 识别重复短语/高频词，返回重复评分与示例片段列表。
-    当前占位：基于简单 n-gram 频次的粗略检测。
-    """
+    """TODO[Author-Advanced]: Detect repeated phrases/high-frequency n-grams; return score and examples. Placeholder uses simple n-gram counts."""
     tokens = re.findall(r"\b\w+\b", text.lower())
     n = 2
     ngrams = [" ".join(tokens[i:i+n]) for i in range(max(len(tokens)-n+1, 0))]
@@ -502,11 +491,7 @@ def detect_repetition(text: str) -> Dict[str, Any]:
     return {"repeated_phrases": repeated, "repetition_score": score}
 
 def extract_palette_from_image(img_bytes: bytes, max_colors: int = 5) -> List[Tuple[int, int, int]]:
-    """
-    TODO[Designer-Advanced]: 从图片中提取主色调（RGB 列表）。
-    建议：使用 PIL.quantize 或 KMeans 聚类，返回 top-k 颜色。
-    当前实现：使用 PIL.quantize 的简化版本，可能不稳定，但可作为基线。
-    """
+    """TODO[Designer-Advanced]: Extract dominant palette (RGB). Suggest PIL.quantize or KMeans. Current impl uses simplified quantize."""
     try:
         from PIL import Image
         import io
@@ -531,10 +516,7 @@ def _hex_to_rgb(hex_or_name: str) -> Optional[Tuple[int, int, int]]:
     return None
 
 def compare_palette(target_palette: List[str], image_palette: List[Tuple[int, int, int]], tolerance: float = 0.28) -> float:
-    """
-    TODO[Designer-Advanced]: 比较 bible 的目标调色板（可为颜色名/hex）与图片主色调的接近度，返回 [0,1] 分数。
-    当前实现：将可解析的 hex 转为 RGB，使用最小欧氏距离的平均归一化做一个粗略分数。
-    """
+    """TODO[Designer-Advanced]: Compare target palette (name/hex) vs image dominant colors; return [0,1] score. Current: min distance average."""
     target_rgbs: List[Tuple[int, int, int]] = []
     for t in target_palette or []:
         rgb = _hex_to_rgb(str(t))
@@ -555,9 +537,9 @@ def compare_palette(target_palette: List[str], image_palette: List[Tuple[int, in
 def validate_image(img_bytes: bytes, expected_size: str, anchors: List[str], strict: bool = True,
                    check_palette: bool = False, target_palette: Optional[List[str]] = None) -> Tuple[bool, str, Dict[str, Any]]:
     """
-    - 尺寸必须等于 expected_size
-    - 简单复杂度检测：unique_colors 很少或 entropy 很低时，strict 下失败
-    - anchors 暂时宽松处理
+    - Size must match expected_size
+    - Basic complexity check: fail in strict mode if unique_colors/entropy too low
+    - Anchors currently relaxed
     """
     try:
         expected_w, expected_h = map(int, expected_size.split("x"))
@@ -571,25 +553,23 @@ def validate_image(img_bytes: bytes, expected_size: str, anchors: List[str], str
     if strict:
         if metrics['unique_colors'] < 10:
             return False, f"Low complexity detected: only {metrics['unique_colors']} colors (possible placeholder)", metrics
-        # 放宽阈值，避免占位图频繁误判失败
+        # Relax threshold to avoid frequent false negatives on placeholders
         if metrics['entropy'] < 20:
             return False, f"Low entropy detected: {metrics['entropy']} (possible placeholder)", metrics
-    # 可选：调色板一致性检查
+    # Optional: palette consistency check
     if check_palette:
-        # TODO[Designer-Advanced]: 提升 palette 提取与匹配准确性（KMeans/色相距离/相似度加权）
+        # TODO[Designer-Advanced]: Improve palette extraction/matching (KMeans, hue distance, weighted similarity)
         image_palette = extract_palette_from_image(img_bytes, max_colors=5)
         score = compare_palette(target_palette or [], image_palette)
         metrics['palette_score'] = round(score, 3)
         if strict and score < 0.5:
             return False, f"Palette mismatch (score={score:.2f})", metrics
-    # anchors 校验（当前宽松）
+    # Anchors check (currently relaxed)
     return True, "Image validation passed", metrics
 
 def ensure_image(bible: dict, beat: dict, size: str, max_attempts: int = 2, strict: bool = True,
                  enforce_palette: bool = False) -> Tuple[bytes, str, Dict[str, Any]]:
-    """
-    生成图片 -> 校验；失败则重试，返回 (img_bytes, final_prompt, metrics)
-    """
+    """Generate image -> validate; retry if needed. Return (img_bytes, final_prompt, metrics)."""
     anchors = [a for c in bible.get('characters', []) for a in c.get('visual_anchors', [])]
     reason = "unknown error"
     for attempt in range(max_attempts):
@@ -619,9 +599,7 @@ def ensure_image(bible: dict, beat: dict, size: str, max_attempts: int = 2, stri
 
 # --- Author functions for page text generation and validation ---
 def build_page_text_prompt(bible: dict, beat: dict) -> str:
-    """
-    产出 Author 的最终提示词（只返回成稿文本、无标题/无Markdown）。
-    """
+    """Author final prompt (return only final text; no title/markdown)."""
     tone = bible.get('tone', 'Warm, imaginative, hopeful.')
     narrator_voice = bible.get('narrator_voice', 'Third-person, gentle, playful.')
     character_names = [char.get('name', '') for char in bible.get('characters', [])]
@@ -643,12 +621,12 @@ REQUIREMENTS:
 Write the page text now:"""
 
 def _split_sentences(text: str) -> List[str]:
-    """用正则粗分句（以 . ! ? 结束），清理空白。"""
+    """Roughly split sentences by regex (. ! ?), trim whitespace."""
     sentences = re.split(r'[.!?]+', text)
     return [s.strip() for s in sentences if s.strip()]
 
 def _word_count(text: str) -> int:
-    """粗略英文词数统计；对中文可按字符数近似处理。"""
+    """Approximate word count; for CJK treat characters approximately."""
     words = re.findall(r'\b\w+\b', text.lower())
     return len(words)
 
@@ -656,9 +634,7 @@ def _word_count(text: str) -> int:
 FORBIDDEN = {"bloody", "damn", "kill", "sex", "hate", "stupid", "ugly"}
 
 def validate_page_text(text: str, bible: dict, beat: dict, strict: bool = True) -> Tuple[bool, str, Dict[str, Any]]:
-    """
-    返回：(passed, reason, metrics)
-    """
+    """Return (passed, reason, metrics)."""
     cleaned_text = text.strip()
     sentences = _split_sentences(cleaned_text)
     sentence_count = len(sentences)
@@ -736,9 +712,7 @@ def validate_page_text(text: str, bible: dict, beat: dict, strict: bool = True) 
     }
 
 def make_page_text_repair_prompt(bible: dict, beat: dict, previous_text: str, reason: str) -> str:
-    """
-    将验证失败的"问题点"转成修复指令，并附上 previous_text。
-    """
+    """Turn validation failures into repair instructions; include previous_text."""
     return f"""The previous page text failed validation: {reason}
 
 Previous text:
@@ -759,9 +733,7 @@ REQUIREMENTS:
 Write the corrected page text:"""
 
 def ensure_page_text(bible: dict, beat: dict, max_attempts: int = 2, strict: bool = True, temperature: float = 0.7) -> Tuple[str, Dict[str, Any]]:
-    """
-    循环：prompt -> llm_text -> 清洗 -> validate；失败则尝试修复。
-    """
+    """Loop: prompt -> llm_text -> clean -> validate; on failure, attempt repair."""
     prev_text = ""
     error_reason = ""
     for attempt in range(max_attempts):

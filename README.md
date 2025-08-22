@@ -14,22 +14,18 @@ An AI-powered storybook generator that creates illustrated stories from a single
 
 ## 🎨 Image Generation Status
 
-**Current Limitation**: 
-- Gemini 2.5 Flash Lite (text model) cannot generate images
-- Gemini 2.0 Flash Exp is for image understanding, not generation
-- Current implementation shows clear placeholder images with explanatory text
+**Primary Path**:
+- Uses Google Imagen 4 via `google-genai` to generate page illustrations.
+- Images are resized to the requested `IMAGE_SIZE` for consistent export and preview.
+
+**Fallback**:
+- If Imagen is unavailable or fails, a high-visibility placeholder image is generated with a short prompt preview. This keeps the end-to-end flow testable.
 
 **Alternative Solutions**:
-1. **OpenAI DALL-E**: Add `openai` package and configure `OPENAI_API_KEY`
-2. **Stable Diffusion**: Use local or cloud-based Stable Diffusion API
-3. **Midjourney**: Integrate via Discord bot API
-4. **Custom Models**: Deploy your own image generation model
-
-**Placeholder Images Include**:
-- Clear "AI Image Generation" label
-- Explanation of the limitation
-- Original prompt preview
-- Professional appearance for development/testing
+1. **OpenAI DALL-E**: Add `openai` and set `OPENAI_API_KEY`.
+2. **Stable Diffusion**: Use local or hosted Stable Diffusion APIs.
+3. **Midjourney**: Integrate via Discord bot API.
+4. **Custom Models**: Connect your own image generation service.
 
 ## 🛠️ Tech Stack
 
@@ -135,20 +131,21 @@ streamlit run app.py
 
 ### 🧪 Classroom Task (for Students)
 
-本仓库已为课堂练习预置“挖空”任务：
+This repo includes pre-baked “fill-in” tasks for learning prompt engineering and agentic workflows:
 
-- 代码空缺点位已使用 `TODO[Role]` 标注（例如 `TODO[Designer]`, `TODO[Author]`）。
-- 主要改动集中在 `utils.py` 的提示词与校验逻辑，符合以下角色分工：
-  - Architect：结构化 Story Bible（已提供基线与修复循环供参考）
-  - Author：补全页文生成提示与验证规则
-  - Designer：补全图像提示词融合与风格一致性
+- All task gaps are labeled with role-based TODOs such as `TODO[Designer]` and `TODO[Author]`.
+- Most edits focus on `utils.py` around prompt composition and validation loops.
+- Roles you’ll practice:
+  - Architect: generate and repair a structured Story Bible
+  - Author: improve page text prompts and validation/repair loops
+  - Designer: improve image prompt fusion and visual consistency
 
-请阅读根目录 `Student_instruction.md` 获取完整任务说明与提交要求。
+See `Student_instruction.md` for a step-by-step guide and submission requirements.
 
-为适配 2-3 小时课堂作业，本项目提供高级项：
-- 文本可读性/重复检测（`utils.py`：`compute_readability_metrics`、`detect_repetition`）
-- 图像配色一致性校验（`utils.py`：`validate_image` 的 palette 检查，`app.py` 的 Advanced 开关）
-- 导出增强（`app.py`：`export_pdf` 支持封面/目录的 TODO 说明）
+Advanced items (aimed at a 2–3 hour assignment):
+- Text readability and repetition checks (`compute_readability_metrics`, `detect_repetition`)
+- Image palette consistency validation (`validate_image` palette check + Advanced toggle in `app.py`)
+- Export enhancements (`export_pdf` cover/TOC parameters and implementation)
 
 ## 🔧 Customization
 
@@ -173,18 +170,21 @@ Adjust AI parameters in `utils.py`:
 ## 📁 Project Structure
 
 ```
-storyteller/
-├── app.py              # Main Streamlit application
-├── utils.py            # AI API wrappers and data models
-├── test_setup.py       # Setup verification script
-├── requirements.txt    # Python dependencies
-├── .env.example       # Environment variables template
-├── README.md          # This file
-└── outputs/           # Generated storybooks (created at runtime)
-    ├── story_name/
-    │   ├── bible.json
-    │   ├── images/
-    │   └── pages/
+ai-storyteller/
+├── app.py                   # Streamlit application
+├── utils.py                 # Core APIs, validation, and prompts
+├── Student_instruction.md   # Step-by-step student guide
+├── requirements.txt         # Python dependencies
+├── test_setup.py            # Environment/dependency/API checks
+├── test_export.py           # Export smoke test
+├── test_gemini.py           # Gemini text smoke test
+├── test_imagen.py           # Imagen image smoke test
+├── README.md                # This file
+└── outputs/                 # Generated artifacts at runtime
+    └── <story_slug>/
+        ├── bible.json
+        ├── images/
+        └── pages/
 ```
 
 ## 🐛 Troubleshooting
@@ -245,10 +245,6 @@ This project is designed for educational purposes. Feel free to:
 - Add new story elements and character types
 - Improve the UI/UX design
 - Share your creative story examples
-
-## 📄 License
-
-This project is open source and available under the MIT License.
 
 ## 🙏 Acknowledgments
 
