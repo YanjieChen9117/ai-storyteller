@@ -323,7 +323,7 @@ if run_button:
                 # Designer prompt + image (with validation and retry)
                 try:
                     img_bytes, final_image_prompt, img_metrics = ensure_image(
-                        data, beat_dict, image_size, max_attempts=2, strict=True
+                        data, beat_dict, image_size, max_attempts=2, strict=False
                     )
                     img_path = base_dir / "images" / f"page_{beat.page:02d}.png"
                     save_bytes(img_path, img_bytes)
@@ -357,81 +357,107 @@ if run_button:
         ss.folder_slug = folder_slug
         ss.image_size = image_size
 
+        # Immediately show preview after generation
+        st.subheader("📚 Story Preview")
+        for page in generated_pages:
+            with st.container(border=True):
+                st.markdown(f"**Page {page['page']}** — {page['summary']}")
+                st.image(str(base_dir / "images" / f"page_{page['page']:02d}.png"), caption="Illustration")
+                st.markdown("**Text**")
+                st.write(page["text"])
+                with st.expander("🎨 Image prompt (final)"):
+                    st.code(page["image_prompt_final"])
+
+        # Show export options
+        st.subheader("📦 Export Your Story")
+        
+        # Initialize export state in session
+        if 'export_pdf_data' not in st.session_state:
+            st.session_state.export_pdf_data = None
+        if 'export_zip_data' not in st.session_state:
+            st.session_state.export_zip_data = None
+        if 'export_pdf_filename' not in st.session_state:
+            st.session_state.export_pdf_filename = None
+        if 'export_zip_filename' not in st.session_state:
+            st.session_state.export_zip_filename = None
+        if 'export_pdf_ready' not in st.session_state:
+            st.session_state.export_pdf_ready = False
+        if 'export_zip_ready' not in st.session_state:
+            st.session_state.export_zip_ready = False
+        
+        colA, colB = st.columns(2)
+        with colA:
+            # PDF Export
+            if st.button("📄 Export PDF", key="export_pdf_btn"):
+                try:
+                    with st.spinner("Creating PDF..."):
+                        pdf_path = export_pdf(base_dir, generated_pages, image_size)
+                        if pdf_path.exists():
+                            # Read file data and store in session
+                            with open(pdf_path, "rb") as f:
+                                st.session_state.export_pdf_data = f.read()
+                            st.session_state.export_pdf_filename = f"{folder_slug}_storybook.pdf"
+                            st.session_state.export_pdf_ready = True
+                            st.success(f"✅ PDF created successfully!")
+                            st.rerun()  # Rerun to show download button
+                        else:
+                            st.error("❌ PDF file was not created")
+                except Exception as e:
+                    st.error(f"❌ Error creating PDF: {str(e)}")
+                    st.info("💡 Check if the output directory exists and has write permissions")
+            
+            # Show download button if PDF is ready
+            if st.session_state.export_pdf_ready and st.session_state.export_pdf_data is not None:
+                st.download_button(
+                    "📥 Download PDF", 
+                    data=st.session_state.export_pdf_data,
+                    file_name=st.session_state.export_pdf_filename, 
+                    mime="application/pdf",
+                    key="download_pdf_btn"
+                )
+                # Clear button
+                if st.button("Clear PDF", key="clear_pdf_btn"):
+                    st.session_state.export_pdf_data = None
+                    st.session_state.export_pdf_filename = None
+                    st.session_state.export_pdf_ready = False
+                    st.rerun()
+                    
+        with colB:
+            # ZIP Export
+            if st.button("📁 Export ZIP", key="export_zip_btn"):
+                try:
+                    with st.spinner("Creating ZIP..."):
+                        zip_path = export_zip(base_dir)
+                        if zip_path.exists():
+                            # Read file data and store in session
+                            with open(zip_path, "rb") as f:
+                                st.session_state.export_zip_data = f.read()
+                            st.session_state.export_zip_filename = f"{folder_slug}_story_export.zip"
+                            st.session_state.export_zip_ready = True
+                            st.success(f"✅ ZIP created successfully!")
+                            st.rerun()  # Rerun to show download button
+                        else:
+                            st.error("❌ ZIP file was not created")
+                except Exception as e:
+                    st.error(f"❌ Error creating ZIP: {str(e)}")
+                    st.info("💡 Check if the output directory exists and has write permissions")
+            
+            # Show download button if ZIP is ready
+            if st.session_state.export_zip_ready and st.session_state.export_zip_data is not None:
+                st.download_button(
+                    "📥 Download ZIP", 
+                    data=st.session_state.export_zip_data,
+                    file_name=st.session_state.export_zip_filename, 
+                    mime="application/zip",
+                    key="download_zip_btn"
+                )
+                # Clear button
+                if st.button("Clear ZIP", key="clear_zip_btn"):
+                    st.session_state.export_zip_data = None
+                    st.session_state.export_zip_filename = None
+                    st.session_state.export_zip_ready = False
+                    st.rerun()
+
     except Exception as e:
         st.error(f"❌ Error generating story: {str(e)}")
         st.info("💡 Tip: Check your API key and internet connection. If the error persists, try simplifying your story idea.")
-
-# ======================
-# Render Preview & Exports on every rerun when story is ready
-# ======================
-if ss.story_ready and ss.generated_pages and ss.base_dir:
-    st.subheader("📚 Story Preview")
-    for page in ss.generated_pages:
-        with st.container(border=True):
-            st.markdown(f"**Page {page['page']}** — {page['summary']}")
-            st.image(str(Path(ss.base_dir) / "images" / f"page_{page['page']:02d}.png"), caption="Illustration")
-            st.markdown("**Text**")
-            st.write(page["text"])
-            with st.expander("🎨 Image prompt (final)"):
-                st.code(page["image_prompt_final"])
-
-    st.subheader("📦 Export Your Story")
-
-    colA, colB = st.columns(2)
-    with colA:
-        if st.button("📄 Export PDF", key="export_pdf_btn"):
-            try:
-                with st.spinner("Creating PDF..."):
-                    pdf_path = export_pdf(Path(ss.base_dir), ss.generated_pages, ss.image_size)
-                    if pdf_path.exists():
-                        with open(pdf_path, "rb") as f:
-                            ss.export_pdf_data = f.read()
-                        ss.export_pdf_filename = f"{ss.folder_slug}_storybook.pdf"
-                        ss.export_pdf_ready = True
-                        st.success("✅ PDF created successfully!")
-                    else:
-                        st.error("❌ PDF file was not created")
-            except Exception as e:
-                st.error(f"❌ Error creating PDF: {str(e)}")
-
-        if ss.export_pdf_ready and ss.export_pdf_data is not None:
-            st.download_button(
-                "📥 Download PDF",
-                data=ss.export_pdf_data,
-                file_name=ss.export_pdf_filename,
-                mime="application/pdf",
-                key="download_pdf_btn"
-            )
-            if st.button("Clear PDF", key="clear_pdf_btn"):
-                ss.export_pdf_data = None
-                ss.export_pdf_filename = None
-                ss.export_pdf_ready = False
-
-    with colB:
-        if st.button("📁 Export ZIP", key="export_zip_btn"):
-            try:
-                with st.spinner("Creating ZIP..."):
-                    zip_path = export_zip(Path(ss.base_dir))
-                    if zip_path.exists():
-                        with open(zip_path, "rb") as f:
-                            ss.export_zip_data = f.read()
-                        ss.export_zip_filename = f"{ss.folder_slug}_story_export.zip"
-                        ss.export_zip_ready = True
-                        st.success("✅ ZIP created successfully!")
-                    else:
-                        st.error("❌ ZIP file was not created")
-            except Exception as e:
-                st.error(f"❌ Error creating ZIP: {str(e)}")
-
-        if ss.export_zip_ready and ss.export_zip_data is not None:
-            st.download_button(
-                "📥 Download ZIP",
-                data=ss.export_zip_data,
-                file_name=ss.export_zip_filename,
-                mime="application/zip",
-                key="download_zip_btn"
-            )
-            if st.button("Clear ZIP", key="clear_zip_btn"):
-                ss.export_zip_data = None
-                ss.export_zip_filename = None
-                ss.export_zip_ready = False

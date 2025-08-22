@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from pydantic import BaseModel, Field
 from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -19,6 +20,9 @@ if not api_key:
 
 # Initialize Gemini client
 _client = genai.Client(api_key=api_key)
+
+# Initialize Imagen client (if not exists)
+_genai_client = genai.Client()  # 读取 GEMINI_API_KEY
 
 # --- Story Bible types (students may expand) ---
 class Character(BaseModel):
@@ -152,9 +156,62 @@ Remember: Return ONLY the JSON object, nothing else."""
 def gen_image_b64(prompt: str,
                   model: str = "gemini-2.0-flash-exp",
                   size: str = "1024x1024") -> bytes:
+    try:
+        try:
+            w, h = map(int, size.lower().split("x"))
+        except Exception:
+            w, h = 1024, 1024
+        aspect = "1:1" if w == h else ("16:9" if w > h else "9:16")
+        image_size = "1K" if max(w, h) <= 1024 else "2K"
+
+        model_id = os.getenv("MODEL_IMAGE", "imagen-4.0-generate-001")
+        resp = _genai_client.models.generate_images(
+            model=model_id,
+            prompt=prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                image_size=image_size,   # <-- 修正：正确字段名
+                aspect_ratio=aspect,
+            ),
+        )
+        png = resp.generated_images[0].image.image_bytes  # PNG bytes
+
+        # 统一到请求尺寸，避免尺寸偏差导致后续校验/展示异常
+        try:
+            from PIL import Image
+            import io
+            with Image.open(io.BytesIO(png)) as im:
+                if im.size != (w, h):
+                    im = im.convert("RGBA") if im.mode != "RGBA" else im
+                    buf = io.BytesIO()
+                    im.resize((w, h), Image.LANCZOS).save(buf, format="PNG")
+                    png = buf.getvalue()
+        except Exception:
+            pass
+
+        return png
+
+    except Exception as e:
+        print(f"[Imagen4 fallback] {type(e).__name__}: {e}")
+        # 占位图兜底
+        try:
+            return placeholder_image(prompt, size)
+        except Exception:
+            # 二层兜底：纯色 PNG
+            from io import BytesIO
+            from PIL import Image
+            buf = BytesIO()
+            try:
+                w, h = map(int, size.lower().split("x"))
+            except Exception:
+                w, h = 1024, 1024
+            Image.new("RGB", (w, h), (240, 248, 255)).save(buf, format="PNG")
+            return buf.getvalue()
+
+def placeholder_image(prompt: str, size: str = "1024x1024") -> bytes:
     """
-    Generate an image from a text prompt using Gemini.
-    Note: This function currently returns a placeholder image since Gemini text models don't support image generation.
+    Generate a placeholder image when Imagen generation fails.
+    This provides a visual fallback with informative text.
     """
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -192,7 +249,7 @@ def gen_image_b64(prompt: str,
         text_y = height // 2 - 30
         draw.text((text_x, text_y), placeholder_text, fill='white', font=font, stroke_width=2, stroke_fill='black')
 
-        subtitle = "Placeholder - Gemini text models don't support image generation"
+        subtitle = "Placeholder - Imagen generation failed"
         subtitle_bbox = draw.textbbox((0, 0), subtitle, font=font)
         subtitle_width = subtitle_bbox[2] - subtitle_bbox[0]
         subtitle_x = (width - subtitle_width) // 2
@@ -207,11 +264,10 @@ def gen_image_b64(prompt: str,
         img.save(img_byte_arr, format='PNG')
         return img_byte_arr.getvalue()
     except Exception as e:
-        raise Exception(f"Image generation failed: {str(e)}")
+        raise Exception(f"Placeholder image generation failed: {str(e)}")
 
 # --- Configuration ---
 MODEL_TEXT = "gemini-2.5-flash-lite"
-MODEL_IMAGE = "gemini-2.0-flash-exp"
 IMAGE_SIZE = "1024x1024"
 
 # --- Utility functions ---
