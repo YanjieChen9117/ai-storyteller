@@ -133,6 +133,23 @@ streamlit run app.py
 - Creative AI Control & Consistency
 - AI-powered Storytelling Techniques
 
+### 🧪 Classroom Task (for Students)
+
+本仓库已为课堂练习预置“挖空”任务：
+
+- 代码空缺点位已使用 `TODO[Role]` 标注（例如 `TODO[Designer]`, `TODO[Author]`）。
+- 主要改动集中在 `utils.py` 的提示词与校验逻辑，符合以下角色分工：
+  - Architect：结构化 Story Bible（已提供基线与修复循环供参考）
+  - Author：补全页文生成提示与验证规则
+  - Designer：补全图像提示词融合与风格一致性
+
+请阅读根目录 `Student_instruction.md` 获取完整任务说明与提交要求。
+
+为适配 2-3 小时课堂作业，本项目提供高级项：
+- 文本可读性/重复检测（`utils.py`：`compute_readability_metrics`、`detect_repetition`）
+- 图像配色一致性校验（`utils.py`：`validate_image` 的 palette 检查，`app.py` 的 Advanced 开关）
+- 导出增强（`app.py`：`export_pdf` 支持封面/目录的 TODO 说明）
+
 ## 🔧 Customization
 
 ### Prompt Engineering

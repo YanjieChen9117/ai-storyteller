@@ -310,12 +310,23 @@ def render_flipbook_spread(pages, base_dir: Path, book_w: int = 1200, book_h: in
     
     st_html(html, height=book_h + 150, scrolling=False)
 
-def export_pdf(base_dir: Path, pages: List[Dict[str, Any]], image_size: str = IMAGE_SIZE) -> Path:
-    """Export story as PDF with images and text."""
+def export_pdf(base_dir: Path, pages: List[Dict[str, Any]], image_size: str = IMAGE_SIZE,
+               cover_title: str | None = None,
+               cover_subtitle: str | None = None,
+               include_toc: bool = False) -> Path:
+    """Export story as PDF with images and text.
+    TODO[Publisher-Advanced]:
+    - 当 include_toc=True 时，生成目录页（page -> summary）。
+    - 当 cover_* 提供时，生成封面页（美观排版，可加入主配色）。
+    当前基线：参数接收但默认行为不变（不主动生成封面/目录）。
+    """
     try:
         w, h = map(int, image_size.split("x"))
         pdf = FPDF(orientation="P", unit="pt", format=(w, h + 200))
         pdf.set_auto_page_break(auto=False)
+
+        # TODO[Publisher-Advanced]: 若 cover_title/cover_subtitle 存在，此处先生成封面页
+        # TODO[Publisher-Advanced]: 若 include_toc=True，此处预先收集目录数据并插入目录页
 
         for i, page in enumerate(pages, start=1):
             pdf.add_page()
@@ -513,6 +524,20 @@ with st.form("controls", clear_on_submit=False):
                                   help="e.g., 1024x1024 (square) or 1792x1024 (landscape)")
     project_name = st.text_input("Project name", value="", 
                                 help="Give your story a creative name!")
+    # --- Advanced controls (students can toggle) ---
+    with st.expander("⚙️ Advanced (for 2-3h assignment)"):
+        st.markdown("""
+        - 这些开关与输入为作业高级项服务。默认关闭，不影响基线。
+        - 完成 TODO 后，再开启可见效果。
+        """)
+        enforce_palette = st.checkbox("Enforce palette consistency (images)", value=False,
+                                     help="Use art_style.palette to validate images' dominant colors (utils.validate_image)")
+        custom_style_tags = st.text_input("Custom style tags (comma)", value="",
+                                        help="If set, will be inserted into bible.art_style.style_tags for this run")
+        custom_palette = st.text_input("Custom palette (comma hex or names)", value="",
+                                      help="If set, will override bible.art_style.palette for this run")
+        custom_comp_rules = st.text_area("Custom composition rules", value="",
+                                       help="e.g., rule-of-thirds, cinematic framing, low contrast background")
     run_button = st.form_submit_button("🚀 Generate Story")
 
 if run_button:
@@ -563,6 +588,16 @@ if run_button:
         st.subheader("📖 Story Bible")
         st.json(data)
 
+        # Optional: override art_style with advanced inputs (in-memory only)
+        if custom_style_tags or custom_palette or custom_comp_rules:
+            data.setdefault("art_style", {})
+            if custom_style_tags:
+                data["art_style"]["style_tags"] = [s.strip() for s in custom_style_tags.split(",") if s.strip()]
+            if custom_palette:
+                data["art_style"]["palette"] = [s.strip() for s in custom_palette.split(",") if s.strip()]
+            if custom_comp_rules:
+                data["art_style"]["composition_rules"] = custom_comp_rules.strip()
+
         # 2) Author + 3) Designer
         generated_pages: List[Dict[str, Any]] = []
         progress_bar = st.progress(0)
@@ -591,7 +626,8 @@ if run_button:
                 # Designer prompt + image (with validation and retry)
                 try:
                     img_bytes, final_image_prompt, img_metrics = ensure_image(
-                        data, beat_dict, image_size, max_attempts=2, strict=False
+                        data, beat_dict, image_size, max_attempts=2, strict=False,
+                        enforce_palette=enforce_palette  # TODO[Designer-Advanced]: 完成 palette 校验后可启用
                     )
                     img_path = base_dir / "images" / f"page_{beat.page:02d}.png"
                     save_bytes(img_path, img_bytes)

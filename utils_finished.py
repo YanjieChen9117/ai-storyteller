@@ -1,5 +1,4 @@
 import os
-import base64
 import re
 import json
 from dataclasses import dataclass
@@ -24,7 +23,8 @@ _client = genai.Client(api_key=api_key)
 # Initialize Imagen client (if not exists)
 _genai_client = genai.Client()  # 读取 GEMINI_API_KEY
 
-# --- Story Bible types (students may expand) ---
+
+# --- Story Bible types ---
 class Character(BaseModel):
     """A character in the story with consistent visual and personality traits."""
     name: str = Field(..., description="Character's name")
@@ -32,11 +32,13 @@ class Character(BaseModel):
     personality: str = Field(..., description="Key personality traits and behaviors")
     visual_anchors: List[str] = Field(default_factory=list, description="Consistent visual elements (clothing, features, etc.)")
 
+
 class PlotBeat(BaseModel):
     """A single page/scene in the story with text and image requirements."""
     page: int = Field(..., description="Page number (1-based)")
     summary: str = Field(..., description="Brief summary of what happens on this page")
     image_prompt: str = Field(..., description="Description of the scene to illustrate")
+
 
 class StoryBible(BaseModel):
     """Complete story specification with characters, style, and plot structure."""
@@ -50,27 +52,15 @@ class StoryBible(BaseModel):
     continuity_rules: List[str] = Field(default_factory=list, description="Rules to maintain consistency")
     plot_beats: List[PlotBeat] = Field(default_factory=list, description="All pages/scenes in order")
 
-# --- API wrappers (students implement) ---
+
+# --- API wrappers ---
 def llm_text(prompt: str,
              temperature: float = 0.2,
-             model: Optional[str] = None, 
+             model: Optional[str] = None,
              max_tokens: int = 256) -> str:
     """
     Single-shot text call with automatic retries using Gemini. Students provide the full prompt.
-    
-    Args:
-        prompt: The complete prompt (system/user style OK)
-        temperature: Creativity level (0.0 = deterministic, 1.0 = very creative)
-        model: Gemini model to use (defaults to MODEL_TEXT env var)
-        max_tokens: Maximum output tokens
-    
-    Returns:
-        The model's text response
-        
-    Raises:
-        Exception: If API call fails after retries
     """
-    # Simple retry logic
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -88,18 +78,17 @@ def llm_text(prompt: str,
             if attempt < max_retries - 1:
                 print(f"Attempt {attempt + 1} failed: {str(e)}. Retrying...")
                 import time
-                time.sleep(2 ** attempt)  # Exponential backoff
+                time.sleep(2 ** attempt)
                 continue
             else:
                 raise Exception(f"Gemini API call failed: {str(e)}")
+
 
 def llm_json(prompt: str,
              model: Optional[str] = None,
              temperature: float = 0.2,
              max_tokens: int = 2048) -> dict:
-    """
-    JSON-only text call with automatic retries using Gemini. Forces strict JSON output.
-    """
+    """JSON-only text call with automatic retries using Gemini. Forces strict JSON output."""
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -120,11 +109,9 @@ Remember: Return ONLY the JSON object, nothing else."""
             text = resp.text or ""
             if not text.strip():
                 raise ValueError("Empty response from Gemini")
-            # 剥 ```json ... ```
             mobj = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.S)
             if mobj:
                 text = mobj.group(1)
-            # 直接解析
             try:
                 return json.loads(text)
             except json.JSONDecodeError:
@@ -153,6 +140,7 @@ Remember: Return ONLY the JSON object, nothing else."""
                 else:
                     raise Exception(f"Gemini API error: {str(e)}")
 
+
 def gen_image_b64(prompt: str,
                   model: str = "gemini-2.0-flash-exp",
                   size: str = "1024x1024") -> bytes:
@@ -170,13 +158,13 @@ def gen_image_b64(prompt: str,
             prompt=prompt,
             config=types.GenerateImagesConfig(
                 number_of_images=1,
-                image_size=image_size,   # <-- 修正：正确字段名
+                image_size=image_size,
                 aspect_ratio=aspect,
             ),
         )
-        png = resp.generated_images[0].image.image_bytes  # PNG bytes
+        png = resp.generated_images[0].image.image_bytes
 
-        # 统一到请求尺寸，避免尺寸偏差导致后续校验/展示异常
+        # Normalize to requested size
         try:
             from PIL import Image
             import io
@@ -193,11 +181,9 @@ def gen_image_b64(prompt: str,
 
     except Exception as e:
         print(f"[Imagen4 fallback] {type(e).__name__}: {e}")
-        # 占位图兜底
         try:
             return placeholder_image(prompt, size)
         except Exception:
-            # 二层兜底：纯色 PNG
             from io import BytesIO
             from PIL import Image
             buf = BytesIO()
@@ -208,15 +194,13 @@ def gen_image_b64(prompt: str,
             Image.new("RGB", (w, h), (240, 248, 255)).save(buf, format="PNG")
             return buf.getvalue()
 
+
 def placeholder_image(prompt: str, size: str = "1024x1024") -> bytes:
-    """
-    Generate a placeholder image when Imagen generation fails.
-    This provides a visual fallback with informative text.
-    """
+    """Generate a friendly placeholder image when Imagen generation fails."""
     try:
         from PIL import Image, ImageDraw, ImageFont
         width, height = map(int, size.split("x"))
-        img = Image.new('RGB', (width, height), color='#87CEEB')  # Sky blue
+        img = Image.new('RGB', (width, height), color='#87CEEB')
         draw = ImageDraw.Draw(img)
 
         # Sun
@@ -266,33 +250,33 @@ def placeholder_image(prompt: str, size: str = "1024x1024") -> bytes:
     except Exception as e:
         raise Exception(f"Placeholder image generation failed: {str(e)}")
 
+
 # --- Configuration ---
 MODEL_TEXT = "gemini-2.5-flash-lite"
 IMAGE_SIZE = "700x700"
 
-# --- Utility functions ---
+
+# --- IO helpers ---
 def save_bytes(path: Path, data: bytes) -> None:
-    """Save binary data to a file, creating directories as needed."""
-    path.parent.mkdir(parents=True, exist_ok=True
-    )
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
 
+
 def write_text(path: Path, text: str) -> None:
-    """Save text to a file, creating directories as needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
 
-# --- Architect functions for Story Bible generation ---
+
+# --- Architect: Story Bible generation ---
 def validate_bible(data: dict) -> tuple[bool, Optional[str]]:
-    """用 StoryBible(**data) 做结构校验。"""
     try:
         StoryBible(**data)
         return True, None
     except Exception as e:
         return False, str(e)
 
+
 def make_bible_repair_prompt(schema: dict, idea: str, pages: int, prev: dict, error: str) -> str:
-    """生成修复提示词。"""
     return f"""The previous Story Bible generation failed with this error: {error}
 
 Previous attempt (fix this JSON):
@@ -320,8 +304,8 @@ Target pages: {pages}
 
 Fix the JSON and return ONLY the corrected version with actual story content:"""
 
+
 def make_bible_prompt_local(idea: str, pages: int, schema: dict) -> str:
-    """在 utils 内部提供与 app.make_bible_prompt 等价的提示，避免循环依赖。"""
     return f"""You are The Architect - a master storyteller who creates structured story plans.
 
 Create a Story Bible for: "{idea}"
@@ -352,11 +336,8 @@ Focus on:
 
 Return ONLY the JSON object with the actual story content:"""
 
+
 def ensure_bible(idea: str, pages: int, schema: dict, max_attempts: int = 3, temperature: float = 0.3):
-    """
-    生成→校验；若失败就以错误报告+上次 JSON 让模型修复，最多 max_attempts 次。
-    成功返回 (StoryBible实例, 原始dict)。
-    """
     prev_data: Dict[str, Any] = {}
     error_msg: str = ""
     for attempt in range(max_attempts):
@@ -383,11 +364,9 @@ def ensure_bible(idea: str, pages: int, schema: dict, max_attempts: int = 3, tem
             continue
     raise Exception(f"Story Bible generation failed after {max_attempts} attempts.")
 
-# --- Designer functions for image generation and validation ---
+
+# --- Designer: image prompt building & validation ---
 def build_style_pack(bible: dict) -> str:
-    """
-    从 bible['art_style'] 取出 style 信息，返回简洁的 style 描述串。
-    """
     art_style = bible.get('art_style', {})
     style_parts = []
     style_tags = art_style.get('style_tags', [])
@@ -395,7 +374,8 @@ def build_style_pack(bible: dict) -> str:
         style_parts.append(f"style: {', '.join(style_tags[:3])}")
     palette = art_style.get('palette', [])
     if palette:
-        style_parts.append(f"palette: {', '.join(palette[:4])}")
+        palette_preview = ', '.join(map(str, palette[:4]))
+        style_parts.append(f"palette: {palette_preview}")
     composition = art_style.get('composition_rules', '')
     if composition:
         comp_text = composition[:50] + "..." if len(composition) > 50 else composition
@@ -404,25 +384,32 @@ def build_style_pack(bible: dict) -> str:
         return "storybook illustration, consistent visual style"
     return "; ".join(style_parts)
 
+
 def build_image_prompt(bible: dict, beat: dict) -> str:
     """
-    TODO[Designer]: 组合风格包(style_pack) + 角色锚点(anchors) + 场景(scene)
-    目标：保证跨页角色与构图一致性，并将配色/风格落入提示词。
-    要求：
-    - 从 bible['art_style'] 中抽取 style_tags/palette/composition_rules
-    - 汇总 characters.visual_anchors（去重，最多3个）
-    - 拼接 beat['image_prompt'] 场景，限制长度 <= 150
-    临时基线：仅返回场景，未做风格与锚点融合。
+    完整实现：融合风格包(style_pack) + 角色锚点(anchors) + 场景(scene)。
+    - 风格包来自 bible.art_style（style_tags / palette / composition_rules）
+    - 锚点来自 characters[].visual_anchors（去重最多3个）
+    - 场景来自 beat.image_prompt（<=150 字）
     """
-    scene = beat.get('image_prompt', '')
+    style_pack = build_style_pack(bible)
+    anchors: List[str] = []
+    for char in bible.get('characters', []):
+        anchors.extend(char.get('visual_anchors', []))
+    unique_anchors = list(dict.fromkeys([a.strip() for a in anchors if a and a.strip()]))[:3]
+    anchor_text = f"Characters: {', '.join(unique_anchors)}" if unique_anchors else ""
+    scene = (beat.get('image_prompt') or '').strip()
     if len(scene) > 150:
         scene = scene[:147] + "..."
-    return f"storybook illustration. Scene: {scene}"
+    parts = ["storybook illustration", style_pack]
+    if anchor_text:
+        parts.append(anchor_text)
+    if scene:
+        parts.append(f"Scene: {scene}")
+    return ". ".join(p for p in parts if p)
+
 
 def analyze_image_bytes(img_bytes: bytes) -> Dict[str, Any]:
-    """
-    用 PIL 读取，返回：width, height, aspect, unique_colors(近似), entropy(粗略), format。
-    """
     try:
         from PIL import Image
         import io
@@ -466,62 +453,114 @@ def analyze_image_bytes(img_bytes: bytes) -> Dict[str, Any]:
             'format': 'error'
         }
 
-# --- Advanced metrics scaffolding (students extend) ---
+
+# --- Advanced metrics ---
 def compute_readability_metrics(text: str) -> Dict[str, Any]:
-    """
-    TODO[Author-Advanced]: 计算可读性指标，用于更严格的文本校验与修复回路。
-    建议实现：Flesch-Kincaid、词汇多样性、平均音节数等。
-    当前占位：返回粗略词/句统计作为基线。
-    """
+    """Compute simple readability metrics (language-agnostic fallback)."""
     sentences = _split_sentences(text)
     word_count = _word_count(text)
     avg_words_per_sentence = round(word_count / max(len(sentences), 1), 1)
-    # TODO: 计算 grade_level / lexical_diversity / syllables_per_word
+
+    # Rough syllable count for English-like text; for other languages returns None gracefully
+    tokens = re.findall(r"\b[a-zA-Z]+\b", text)
+    def count_syllables(word: str) -> int:
+        w = word.lower()
+        vowels = "aeiouy"
+        count = 0
+        prev_is_vowel = False
+        for ch in w:
+            is_vowel = ch in vowels
+            if is_vowel and not prev_is_vowel:
+                count += 1
+            prev_is_vowel = is_vowel
+        if w.endswith("e") and count > 1:
+            count -= 1
+        return max(count, 1)
+    syllables = sum(count_syllables(t) for t in tokens) if tokens else 0
+    avg_syllables_per_word = round(syllables / max(len(tokens), 1), 2) if tokens else None
+
+    # Flesch-Kincaid grade (approx) if English tokens exist
+    grade_level = None
+    if tokens and sentences:
+        try:
+            grade_level = round(0.39 * (word_count / max(len(sentences), 1)) + 11.8 * (syllables / max(len(tokens), 1)) - 15.59, 2)
+        except Exception:
+            grade_level = None
+
+    # Lexical diversity
+    all_tokens = re.findall(r"\b\w+\b", text.lower())
+    uniq = len(set(all_tokens))
+    lexical_diversity = round(uniq / max(len(all_tokens), 1), 3) if all_tokens else None
+
     return {
         "avg_words_per_sentence": avg_words_per_sentence,
         "sentence_count": len(sentences),
         "word_count": word_count,
-        "grade_level": None,  # TODO: 实现后填充
-        "lexical_diversity": None,  # TODO: 实现后填充
-        "avg_syllables_per_word": None,  # TODO: 实现后填充
+        "grade_level": grade_level,
+        "lexical_diversity": lexical_diversity,
+        "avg_syllables_per_word": avg_syllables_per_word,
     }
 
+
 def detect_repetition(text: str) -> Dict[str, Any]:
-    """
-    TODO[Author-Advanced]: 识别重复短语/高频词，返回重复评分与示例片段列表。
-    当前占位：基于简单 n-gram 频次的粗略检测。
-    """
+    """Detect repeated 2-gram and 3-gram phrases and build a repetition score."""
     tokens = re.findall(r"\b\w+\b", text.lower())
-    n = 2
-    ngrams = [" ".join(tokens[i:i+n]) for i in range(max(len(tokens)-n+1, 0))]
-    freq: Dict[str, int] = {}
-    for g in ngrams:
-        freq[g] = freq.get(g, 0) + 1
-    repeated = sorted([k for k, v in freq.items() if v >= 3], key=lambda k: -freq[k])[:5]
-    score = sum(freq[k] for k in repeated)
-    return {"repeated_phrases": repeated, "repetition_score": score}
+    def ngram_counts(n: int) -> Dict[str, int]:
+        freq: Dict[str, int] = {}
+        for i in range(max(len(tokens) - n + 1, 0)):
+            g = " ".join(tokens[i:i+n])
+            freq[g] = freq.get(g, 0) + 1
+        return freq
+    bigrams = ngram_counts(2)
+    trigrams = ngram_counts(3)
+    repeated_2 = sorted([k for k, v in bigrams.items() if v >= 3], key=lambda k: -bigrams[k])[:5]
+    repeated_3 = sorted([k for k, v in trigrams.items() if v >= 2], key=lambda k: -trigrams[k])[:5]
+    score = sum(bigrams.get(k, 0) for k in repeated_2) + 2 * sum(trigrams.get(k, 0) for k in repeated_3)
+    return {
+        "repeated_bigrams": repeated_2,
+        "repeated_trigrams": repeated_3,
+        "repetition_score": score,
+    }
+
 
 def extract_palette_from_image(img_bytes: bytes, max_colors: int = 5) -> List[Tuple[int, int, int]]:
-    """
-    TODO[Designer-Advanced]: 从图片中提取主色调（RGB 列表）。
-    建议：使用 PIL.quantize 或 KMeans 聚类，返回 top-k 颜色。
-    当前实现：使用 PIL.quantize 的简化版本，可能不稳定，但可作为基线。
-    """
+    """Extract dominant palette from image using PIL quantization."""
     try:
         from PIL import Image
         import io
         with Image.open(io.BytesIO(img_bytes)) as im:
             im = im.convert("RGB")
             q = im.quantize(colors=max_colors, method=2)
-            palette = q.getpalette()[: max_colors * 3]
-            colors = [(palette[i], palette[i+1], palette[i+2]) for i in range(0, len(palette), 3)]
+            pal = q.getpalette()[: max_colors * 3]
+            colors = [(pal[i], pal[i+1], pal[i+2]) for i in range(0, len(pal), 3)]
             return colors[:max_colors]
     except Exception:
         return []
 
+
+_BASIC_COLOR_NAMES = {
+    # minimal mapping for common names
+    "white": (255, 255, 255),
+    "black": (0, 0, 0),
+    "red": (255, 0, 0),
+    "green": (0, 128, 0),
+    "blue": (0, 0, 255),
+    "yellow": (255, 255, 0),
+    "cyan": (0, 255, 255),
+    "magenta": (255, 0, 255),
+    "orange": (255, 165, 0),
+    "purple": (128, 0, 128),
+    "pink": (255, 192, 203),
+    "brown": (165, 42, 42),
+    "gray": (128, 128, 128),
+}
+
+
 def _hex_to_rgb(hex_or_name: str) -> Optional[Tuple[int, int, int]]:
     try:
-        s = hex_or_name.strip().lstrip('#').lower()
+        s = str(hex_or_name).strip().lstrip('#').lower()
+        if s in _BASIC_COLOR_NAMES:
+            return _BASIC_COLOR_NAMES[s]
         if len(s) in (3, 6) and all(c in '0123456789abcdef' for c in s):
             if len(s) == 3:
                 s = ''.join(ch*2 for ch in s)
@@ -530,21 +569,19 @@ def _hex_to_rgb(hex_or_name: str) -> Optional[Tuple[int, int, int]]:
         pass
     return None
 
+
 def compare_palette(target_palette: List[str], image_palette: List[Tuple[int, int, int]], tolerance: float = 0.28) -> float:
-    """
-    TODO[Designer-Advanced]: 比较 bible 的目标调色板（可为颜色名/hex）与图片主色调的接近度，返回 [0,1] 分数。
-    当前实现：将可解析的 hex 转为 RGB，使用最小欧氏距离的平均归一化做一个粗略分数。
-    """
+    """Compare bible target palette and image palette, return a [0,1] match score."""
     target_rgbs: List[Tuple[int, int, int]] = []
     for t in target_palette or []:
         rgb = _hex_to_rgb(str(t))
         if rgb:
             target_rgbs.append(rgb)
     if not target_rgbs or not image_palette:
-        return 0.5  # 中性分数
+        return 0.5
     import math
     def dist(a, b):
-        return math.sqrt(sum((ax-bx)**2 for ax, bx in zip(a, b))) / 441.67  # 255*sqrt(3) 近似归一化
+        return math.sqrt(sum((ax-bx)**2 for ax, bx in zip(a, b))) / 441.67
     dists = []
     for tr in target_rgbs:
         best = min(dist(tr, ir) for ir in image_palette)
@@ -552,13 +589,9 @@ def compare_palette(target_palette: List[str], image_palette: List[Tuple[int, in
     avg = sum(dists) / len(dists)
     return max(0.0, 1.0 - avg / max(tolerance, 1e-6))
 
+
 def validate_image(img_bytes: bytes, expected_size: str, anchors: List[str], strict: bool = True,
                    check_palette: bool = False, target_palette: Optional[List[str]] = None) -> Tuple[bool, str, Dict[str, Any]]:
-    """
-    - 尺寸必须等于 expected_size
-    - 简单复杂度检测：unique_colors 很少或 entropy 很低时，strict 下失败
-    - anchors 暂时宽松处理
-    """
     try:
         expected_w, expected_h = map(int, expected_size.split("x"))
     except:
@@ -571,25 +604,19 @@ def validate_image(img_bytes: bytes, expected_size: str, anchors: List[str], str
     if strict:
         if metrics['unique_colors'] < 10:
             return False, f"Low complexity detected: only {metrics['unique_colors']} colors (possible placeholder)", metrics
-        # 放宽阈值，避免占位图频繁误判失败
         if metrics['entropy'] < 20:
             return False, f"Low entropy detected: {metrics['entropy']} (possible placeholder)", metrics
-    # 可选：调色板一致性检查
     if check_palette:
-        # TODO[Designer-Advanced]: 提升 palette 提取与匹配准确性（KMeans/色相距离/相似度加权）
         image_palette = extract_palette_from_image(img_bytes, max_colors=5)
         score = compare_palette(target_palette or [], image_palette)
         metrics['palette_score'] = round(score, 3)
         if strict and score < 0.5:
             return False, f"Palette mismatch (score={score:.2f})", metrics
-    # anchors 校验（当前宽松）
     return True, "Image validation passed", metrics
+
 
 def ensure_image(bible: dict, beat: dict, size: str, max_attempts: int = 2, strict: bool = True,
                  enforce_palette: bool = False) -> Tuple[bytes, str, Dict[str, Any]]:
-    """
-    生成图片 -> 校验；失败则重试，返回 (img_bytes, final_prompt, metrics)
-    """
     anchors = [a for c in bible.get('characters', []) for a in c.get('visual_anchors', [])]
     reason = "unknown error"
     for attempt in range(max_attempts):
@@ -617,11 +644,9 @@ def ensure_image(bible: dict, beat: dict, size: str, max_attempts: int = 2, stri
                 raise RuntimeError(f"Image generation failed after {max_attempts} attempts: {reason}")
     raise RuntimeError(f"Image generation failed after {max_attempts} attempts: {reason}")
 
-# --- Author functions for page text generation and validation ---
+
+# --- Author: page text prompt & validation ---
 def build_page_text_prompt(bible: dict, beat: dict) -> str:
-    """
-    产出 Author 的最终提示词（只返回成稿文本、无标题/无Markdown）。
-    """
     tone = bible.get('tone', 'Warm, imaginative, hopeful.')
     narrator_voice = bible.get('narrator_voice', 'Third-person, gentle, playful.')
     character_names = [char.get('name', '') for char in bible.get('characters', [])]
@@ -642,23 +667,21 @@ REQUIREMENTS:
 
 Write the page text now:"""
 
+
 def _split_sentences(text: str) -> List[str]:
-    """用正则粗分句（以 . ! ? 结束），清理空白。"""
     sentences = re.split(r'[.!?]+', text)
     return [s.strip() for s in sentences if s.strip()]
 
+
 def _word_count(text: str) -> int:
-    """粗略英文词数统计；对中文可按字符数近似处理。"""
     words = re.findall(r'\b\w+\b', text.lower())
     return len(words)
 
-# Light forbidden words example, can be expanded as needed
+
 FORBIDDEN = {"bloody", "damn", "kill", "sex", "hate", "stupid", "ugly"}
 
+
 def validate_page_text(text: str, bible: dict, beat: dict, strict: bool = True) -> Tuple[bool, str, Dict[str, Any]]:
-    """
-    返回：(passed, reason, metrics)
-    """
     cleaned_text = text.strip()
     sentences = _split_sentences(cleaned_text)
     sentence_count = len(sentences)
@@ -670,63 +693,7 @@ def validate_page_text(text: str, bible: dict, beat: dict, strict: bool = True) 
     forbidden_found = [word for word in FORBIDDEN if word in text_lower]
     avg_words_per_sentence = round(word_count / sentence_count, 1) if sentence_count > 0 else 0
 
-    if strict:
-        if sentence_count < 2:
-            return False, f"Too few sentences: {sentence_count} (need 2-4)", {
-                'sentence_count': sentence_count,
-                'word_count': word_count,
-                'avg_words_per_sentence': avg_words_per_sentence,
-                'has_main_character': has_main_character,
-                'forbidden_found': forbidden_found,
-                'ends_with_question': ends_with_question
-            }
-        if sentence_count > 4:
-            return False, f"Too many sentences: {sentence_count} (need 2-4)", {
-                'sentence_count': sentence_count,
-                'word_count': word_count,
-                'avg_words_per_sentence': avg_words_per_sentence,
-                'has_main_character': has_main_character,
-                'forbidden_found': forbidden_found,
-                'ends_with_question': ends_with_question
-            }
-        if word_count > 90:
-            return False, f"Too many words: {word_count} (max 90)", {
-                'sentence_count': sentence_count,
-                'word_count': word_count,
-                'avg_words_per_sentence': avg_words_per_sentence,
-                'has_main_character': has_main_character,
-                'forbidden_found': forbidden_found,
-                'ends_with_question': ends_with_question
-            }
-        if ends_with_question:
-            return False, "Text ends with a question mark (should not ask readers directly)", {
-                'sentence_count': sentence_count,
-                'word_count': word_count,
-                'avg_words_per_sentence': avg_words_per_sentence,
-                'has_main_character': has_main_character,
-                'forbidden_found': forbidden_found,
-                'ends_with_question': ends_with_question
-            }
-        if not has_main_character:
-            return False, "No main character names found in text", {
-                'sentence_count': sentence_count,
-                'word_count': word_count,
-                'avg_words_per_sentence': avg_words_per_sentence,
-                'has_main_character': has_main_character,
-                'forbidden_found': forbidden_found,
-                'ends_with_question': ends_with_question
-            }
-        if forbidden_found:
-            return False, f"Forbidden words found: {', '.join(forbidden_found)}", {
-                'sentence_count': sentence_count,
-                'word_count': word_count,
-                'avg_words_per_sentence': avg_words_per_sentence,
-                'has_main_character': has_main_character,
-                'forbidden_found': forbidden_found,
-                'ends_with_question': ends_with_question
-            }
-
-    return True, "Text validation passed", {
+    metrics: Dict[str, Any] = {
         'sentence_count': sentence_count,
         'word_count': word_count,
         'avg_words_per_sentence': avg_words_per_sentence,
@@ -735,10 +702,41 @@ def validate_page_text(text: str, bible: dict, beat: dict, strict: bool = True) 
         'ends_with_question': ends_with_question
     }
 
+    # Advanced metrics
+    adv = compute_readability_metrics(cleaned_text)
+    rep = detect_repetition(cleaned_text)
+    metrics.update({
+        'grade_level': adv.get('grade_level'),
+        'lexical_diversity': adv.get('lexical_diversity'),
+        'avg_syllables_per_word': adv.get('avg_syllables_per_word'),
+        'repetition_score': rep.get('repetition_score'),
+        'repeated_bigrams': rep.get('repeated_bigrams'),
+        'repeated_trigrams': rep.get('repeated_trigrams'),
+    })
+
+    if strict:
+        if sentence_count < 2:
+            return False, f"Too few sentences: {sentence_count} (need 2-4)", metrics
+        if sentence_count > 4:
+            return False, f"Too many sentences: {sentence_count} (need 2-4)", metrics
+        if word_count > 90:
+            return False, f"Too many words: {word_count} (max 90)", metrics
+        if ends_with_question:
+            return False, "Text ends with a question mark (should not ask readers directly)", metrics
+        if not has_main_character:
+            return False, "No main character names found in text", metrics
+        if forbidden_found:
+            return False, f"Forbidden words found: {', '.join(forbidden_found)}", metrics
+        # Advanced thresholds
+        if not (6 <= avg_words_per_sentence <= 25):
+            return False, "Average sentence length out of bounds (6-25)", metrics
+        if metrics.get('repetition_score', 0) >= 6:
+            return False, "Excessive repetition detected", metrics
+
+    return True, "Text validation passed", metrics
+
+
 def make_page_text_repair_prompt(bible: dict, beat: dict, previous_text: str, reason: str) -> str:
-    """
-    将验证失败的"问题点"转成修复指令，并附上 previous_text。
-    """
     return f"""The previous page text failed validation: {reason}
 
 Previous text:
@@ -758,10 +756,8 @@ REQUIREMENTS:
 
 Write the corrected page text:"""
 
+
 def ensure_page_text(bible: dict, beat: dict, max_attempts: int = 2, strict: bool = True, temperature: float = 0.7) -> Tuple[str, Dict[str, Any]]:
-    """
-    循环：prompt -> llm_text -> 清洗 -> validate；失败则尝试修复。
-    """
     prev_text = ""
     error_reason = ""
     for attempt in range(max_attempts):
@@ -778,8 +774,6 @@ def ensure_page_text(bible: dict, beat: dict, max_attempts: int = 2, strict: boo
 
             is_valid, error_reason, metrics = validate_page_text(cleaned_text, bible, beat, strict)
             if is_valid:
-                # TODO[Author]: 你可以扩展 validate_page_text 的规则（如阅读等级/重复用词检测），
-                # 并在此返回更丰富的 metrics（保持返回结构不变）。
                 return cleaned_text, metrics
 
             prev_text = cleaned_text
@@ -790,3 +784,5 @@ def ensure_page_text(bible: dict, beat: dict, max_attempts: int = 2, strict: boo
                 raise RuntimeError(f"Page text generation failed after {max_attempts} attempts: {error_reason}")
             continue
     raise RuntimeError(f"Page text generation failed after {max_attempts} attempts: {error_reason}")
+
+
